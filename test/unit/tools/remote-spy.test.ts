@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LuauOptions, ToolContext } from "../../../src/application/tool/tool.js";
-import { buildCobaltSpySource } from "../../../src/application/services/cobalt-spy-source.js";
+import { buildRemoteSpySource } from "../../../src/application/services/remote-spy-source.js";
 import ensureRemoteSpy from "../../../src/tools/remote-spy/ensure-remote-spy.js";
 import getLogs from "../../../src/tools/remote-spy/get-remote-spy-logs.js";
 import monitorRemote from "../../../src/tools/remote-spy/monitor-remote.js";
@@ -43,7 +43,9 @@ describe("Cobalt remote-spy tools", () => {
       ensureRemoteSpy.input.parse({ mode: "raknet", max: 1000, threadContext: 7 }),
       ctx,
     );
-    expect(calls[0]?.source).toBe(buildCobaltSpySource("start", { mode: "raknet", max: 1000 }));
+    expect(calls[0]?.source).toBe(
+      buildRemoteSpySource("cobalt", "start", { mode: "raknet", max: 1000 }),
+    );
     expect(calls[0]?.options).toEqual({ threadContext: 7, timeoutMs: 60000 });
     expect(ensureRemoteSpy.input.parse({}).max).toBeUndefined();
   });
@@ -56,8 +58,8 @@ describe("Cobalt remote-spy tools", () => {
       raknetOnly: true,
     });
     await getLogs.execute(input, ctx);
-    const { threadContext, ...options } = input;
-    expect(calls[0]?.source).toBe(buildCobaltSpySource("logs", options));
+    const { threadContext, engine, ...options } = input;
+    expect(calls[0]?.source).toBe(buildRemoteSpySource(engine, "logs", options));
     expect(calls[0]?.source.length).toBeLessThan(25000);
     expect(calls[0]?.options).toEqual({ threadContext: threadContext ?? 8, timeoutMs: 15000 });
   });
@@ -90,7 +92,7 @@ describe("Cobalt remote-spy tools", () => {
     );
     expect(calls).toHaveLength(2);
     expect(calls[1]?.source).toBe(
-      buildCobaltSpySource("view-start", {
+      buildRemoteSpySource("cobalt", "view-start", {
         view: "monitor:game.Remote",
         remotePath: "game.Remote",
         direction: "Incoming",
@@ -103,10 +105,12 @@ describe("Cobalt remote-spy tools", () => {
       ctx,
     );
     expect(calls[0]?.source).toBe(
-      buildCobaltSpySource("view-fetch", { view: "monitor:game.Remote", limit: 100 }),
+      buildRemoteSpySource("cobalt", "view-fetch", { view: "monitor:game.Remote", limit: 100 }),
     );
     await traceRemote.execute(traceRemote.input.parse({ action: "stop" }), ctx);
-    expect(calls[1]?.source).toBe(buildCobaltSpySource("view-stop", { view: "trace", limit: 100 }));
+    expect(calls[1]?.source).toBe(
+      buildRemoteSpySource("cobalt", "view-stop", { view: "trace", limit: 100 }),
+    );
   });
   it("validates missing selectors before evaluating code", async () => {
     const { ctx, calls } = stubContext({});
@@ -127,7 +131,7 @@ describe("Cobalt remote-spy tools", () => {
       ctx,
     );
     expect(calls[0]?.source).toBe(
-      buildCobaltSpySource("control", {
+      buildRemoteSpySource("cobalt", "control", {
         remotePath: undefined,
         remoteId: "remote-2",
         direction: "Outgoing",

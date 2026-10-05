@@ -288,34 +288,43 @@ export class Dashboard {
     });
 
     app.get("/api/spy/logs", async (c) => {
+      const engine = c.req.query("engine") ?? "cobalt";
+      if (engine !== "cobalt" && engine !== "ketamine")
+        return c.json({ error: "invalid spy engine" }, 400);
       const clientId = c.req.query("client") ?? "";
       if (!clientId) return c.json({ error: "missing ?client" }, 400);
       const limit = Number(c.req.query("limit")) || 200;
       try {
-        return c.json(await this.spy.logs(clientId, limit));
+        return c.json(await this.spy.logs(clientId, limit, engine));
       } catch (thrown) {
         const err = toDomainError(thrown);
         return c.json({ error: err.message, code: err.code }, 502);
       }
     });
     app.post("/api/spy/start", async (c) => {
+      const engine = c.req.query("engine") ?? "cobalt";
+      if (engine !== "cobalt" && engine !== "ketamine")
+        return c.json({ error: "invalid spy engine" }, 400);
       const clientId = c.req.query("client") ?? "";
       if (!clientId) return c.json({ error: "missing ?client" }, 400);
       const mode = c.req.query("mode") ?? "auto";
       if (mode !== "auto" && mode !== "raknet" && mode !== "luau")
         return c.json({ error: "invalid capture mode" }, 400);
       try {
-        return c.json(await this.spy.start(clientId, mode));
+        return c.json(await this.spy.start(clientId, mode, engine));
       } catch (thrown) {
         const err = toDomainError(thrown);
         return c.json({ error: err.message, code: err.code }, 502);
       }
     });
     app.post("/api/spy/clear", async (c) => {
+      const engine = c.req.query("engine") ?? "cobalt";
+      if (engine !== "cobalt" && engine !== "ketamine")
+        return c.json({ error: "invalid spy engine" }, 400);
       const clientId = c.req.query("client") ?? "";
       if (!clientId) return c.json({ error: "missing ?client" }, 400);
       try {
-        return c.json(await this.spy.clear(clientId));
+        return c.json(await this.spy.clear(clientId, engine));
       } catch (thrown) {
         const err = toDomainError(thrown);
         return c.json({ error: err.message, code: err.code }, 502);

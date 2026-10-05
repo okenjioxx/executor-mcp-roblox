@@ -1,6 +1,6 @@
 {
   "name": "executor-mcp-roblox",
-  "version": "2.0.0-cobalt.1",
+  "version": "2.0.0-spies.1",
   "description": "A clean-architecture MCP server that lets AI agents drive a running Roblox executor client.",
   "repository": {
     "type": "git",
@@ -45,7 +45,8 @@
     "test:coverage": "vitest run --coverage",
     "verify": "pnpm run typecheck && pnpm run lint && pnpm run test",
     "build:cobalt": "node scripts/build-cobalt-bundle.mjs",
-    "test:luau": "node scripts/check-cobalt-luau.mjs"
+    "test:luau": "node scripts/check-cobalt-luau.mjs && node scripts/check-ketamine-luau.mjs",
+    "test:luau:ketamine": "node scripts/check-ketamine-luau.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",

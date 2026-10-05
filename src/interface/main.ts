@@ -36,7 +36,7 @@ import { FsSessionLogger } from "../infrastructure/sessions/fs-session-logger.js
 import { BridgeServer } from "../infrastructure/transport/bridge-server.js";
 import { allTools } from "../tools/index.js";
 
-const APP_VERSION = "2.0.0-cobalt.1";
+const APP_VERSION = "2.0.0-spies.1";
 
 interface Application {
   start(): Promise<void>;

@@ -1,14 +1,15 @@
 import { z } from "zod";
 import { defineTool } from "../../application/tool/define-tool.js";
-import { cobaltDirection, runCobalt } from "../_shared/cobalt.js";
+import { cobaltDirection, runRemoteSpy, spyEngine } from "../_shared/cobalt.js";
 
 export default defineTool({
   name: "get-remote-spy-logs",
-  title: "Read Cobalt captures",
+  title: "Read remote-spy captures",
   category: "Remote Spy",
   description:
-    "Reads bounded Cobalt captures newest first, with direction, RakNet/actor metadata, typed argument snapshots, nil arity, and available function results/errors. afterId enables incremental polling; gap reports expired history. Reads never load Cobalt. Remote IDs distinguish same-named instances and expire on restart.",
+    "Reads bounded captures from the selected engine without loading it. Filters by direction, remoteId/path, method, name, and afterId cursor. Typed argument snapshots preserve nil arity and binary previews. Cobalt supplies available RakNet/actor metadata and results; Ketamine captures request arguments only. gap reports expired history. IDs are scoped to the engine and generation.",
   input: z.object({
+    engine: spyEngine,
     limit: z.number().int().optional().default(100),
     afterId: z.number().int().nonnegative().optional(),
     direction: cobaltDirection.optional().default("Both"),
@@ -20,6 +21,6 @@ export default defineTool({
     threadContext: z.number().int().optional(),
   }),
   async execute({ threadContext, ...options }, ctx) {
-    return runCobalt(ctx, "logs", options, threadContext);
+    return runRemoteSpy(ctx, "logs", options, threadContext);
   },
 });

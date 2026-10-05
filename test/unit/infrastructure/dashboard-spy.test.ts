@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCobaltSpySource } from "../../../src/application/services/cobalt-spy-source.js";
+import { buildRemoteSpySource } from "../../../src/application/services/remote-spy-source.js";
 import type { ExecutionGateway } from "../../../src/application/ports/execution-gateway.js";
 import { ClientNotFoundError } from "../../../src/domain/errors/errors.js";
 import { ClientId } from "../../../src/domain/shared/ids.js";
@@ -23,21 +23,30 @@ describe("Cobalt dashboard service", () => {
   it("uses the same capture source as MCP without auto-loading", async () => {
     const { service, calls, client } = setup();
     await service.logs(client.id, 300);
-    expect(calls[0]?.source).toBe(buildCobaltSpySource("logs", { limit: 300 }));
+    expect(calls[0]?.source).toBe(buildRemoteSpySource("cobalt", "logs", { limit: 300 }));
     expect(calls[0]?.id).toBe(client.id);
     expect(calls[0]?.source.length).toBeLessThan(25000);
   });
   it("starts the pinned bundle with requested mode and clears the shared history", async () => {
     const { service, calls, client } = setup();
     await service.start(client.id, "raknet");
-    expect(calls[0]?.source).toBe(buildCobaltSpySource("start", { mode: "raknet" }));
+    expect(calls[0]?.source).toBe(buildRemoteSpySource("cobalt", "start", { mode: "raknet" }));
     expect(calls[0]?.timeoutMs).toBe(60000);
     await service.clear(client.id);
-    expect(calls[1]?.source).toBe(buildCobaltSpySource("clear"));
+    expect(calls[1]?.source).toBe(buildRemoteSpySource("cobalt", "clear"));
   });
   it("refuses unknown clients without executing source", async () => {
     const { service, calls } = setup();
     await expect(service.start("missing", "auto")).rejects.toBeInstanceOf(ClientNotFoundError);
     expect(calls).toHaveLength(0);
+  });
+  it("routes dashboard start, logs, and clear to the selected Ketamine engine", async () => {
+    const { service, calls, client } = setup();
+    await service.start(client.id, "luau", "ketamine");
+    await service.logs(client.id, 25, "ketamine");
+    await service.clear(client.id, "ketamine");
+    expect(calls[0]?.source).toBe(buildRemoteSpySource("ketamine", "start", { mode: "luau" }));
+    expect(calls[1]?.source).toBe(buildRemoteSpySource("ketamine", "logs", { limit: 25 }));
+    expect(calls[2]?.source).toBe(buildRemoteSpySource("ketamine", "clear"));
   });
 });

@@ -1,15 +1,16 @@
 import { z } from "zod";
 import { defineTool } from "../../application/tool/define-tool.js";
-import { cobaltDirection, cobaltMode, runCobalt } from "../_shared/cobalt.js";
+import { cobaltDirection, cobaltMode, runRemoteSpy, spyEngine } from "../_shared/cobalt.js";
 
 export default defineTool({
   name: "remote-spy",
-  title: "Cobalt spy controls and diagnostics",
+  title: "Remote-spy controls and diagnostics",
   category: "Remote Spy",
   mutatesState: true,
   description:
-    "WRITES LIVE GAME STATE for start/restart/stop/clear/block/unblock/ignore/unignore. Primary Cobalt control surface: status, list ranked captured remotes, logs, code generation by callId, and reversible controls by remoteId or Luau remotePath. Read operations never auto-load. code returns Cobalt-generated Luau without executing it. Block/ignore require an observed remote in the selected direction. restart/stop unload the entire Cobalt session, including an adopted external session; restart expires IDs and views.",
+    "WRITES LIVE GAME STATE for start/restart/stop/clear/block/unblock/ignore/unignore. Select engine=cobalt (default) or ketamine. Starting another engine stops the previous spy on this client after preflight succeeds. Read operations never load either engine. Lists ranked remotes, filtered logs, and generates call code without replaying it. Block/ignore require observed remotes. Ketamine incoming RemoteEvent blocking is unsupported; outgoing calls and incoming function callbacks can be blocked. restart expires IDs/views; stop unloads the selected session, including an adopted Cobalt GUI/hooks.",
   input: z.object({
+    engine: spyEngine,
     operation: z.enum([
       "status",
       "start",
@@ -40,7 +41,7 @@ export default defineTool({
     if (["block", "unblock", "ignore", "unignore"].includes(operation)) {
       if (!options.remotePath && !options.remoteId)
         return { data: { error: "remotePath or remoteId is required" }, isError: true };
-      return runCobalt(
+      return runRemoteSpy(
         ctx,
         "control",
         {
@@ -53,7 +54,7 @@ export default defineTool({
     }
     if (operation === "code" && !options.callId)
       return { data: { error: "callId is required" }, isError: true };
-    return runCobalt(
+    return runRemoteSpy(
       ctx,
       operation as "status" | "start" | "restart" | "stop" | "list" | "logs" | "clear" | "code",
       options,

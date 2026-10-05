@@ -1070,8 +1070,9 @@ return p"></textarea>
       <input class="search" id="spy-filter" type="text" placeholder="Filter by remote / method / args…" autocomplete="off" />
       <label class="out-toggle"><input type="checkbox" id="spy-autoref" checked /> Auto-refresh</label>
       <span class="count" id="spy-count"></span>
-      <select class="out-btn" id="spy-mode" aria-label="Cobalt capture mode"><option value="auto">Auto</option><option value="raknet">RakNet</option><option value="luau">Luau</option></select>
-      <button class="out-btn" id="spy-start">Start Cobalt</button>
+      <select class="out-btn" id="spy-engine" aria-label="Remote spy engine"><option value="cobalt">Cobalt</option><option value="ketamine">Ketamine</option></select>
+      <select class="out-btn" id="spy-mode" aria-label="Capture mode"><option value="auto">Auto</option><option value="raknet">RakNet</option><option value="luau">Luau</option></select>
+      <button class="out-btn" id="spy-start">Start spy</button>
       <button class="out-btn" id="spy-refresh">Refresh</button>
       <button class="out-btn" id="spy-clear">Clear buffer</button>
     </div>
@@ -3092,7 +3093,7 @@ return p"></textarea>
   }, 0);
 
   // ---- spy tab ----
-  var spyState = { clientId: null, data: null, err: null, filter: "", autoRefresh: true };
+  var spyState = { engine: "cobalt", clientId: null, data: null, err: null, filter: "", autoRefresh: true };
   function spyArgsPreview(args) {
     if (!Array.isArray(args)) return "";
     try { return JSON.stringify(args).slice(0, 240); }
@@ -3125,8 +3126,8 @@ return p"></textarea>
       return;
     }
     if (d.notRunning) {
-      body.innerHTML = '<div class="empty"><div class="h">Cobalt capture is stopped</div>' +
-        '<div class="s">Choose a capture mode and click Start Cobalt, or run <span class="mono">ensure-remote-spy</span> via MCP.</div></div>';
+      body.innerHTML = '<div class="empty"><div class="h">Selected spy is stopped</div>' +
+        '<div class="s">Choose a capture mode and click Start spy, or run <span class="mono">ensure-remote-spy</span> via MCP.</div></div>';
       byId("spy-count").textContent = "";
       byId("t-spy").textContent = 0;
       return;
@@ -3157,22 +3158,23 @@ return p"></textarea>
         '<td style="text-align:right"><button class="scopy" data-copy="' + esc(snippet) + '" title="Copy capture JSON (includes results and metadata)">copy</button></td>' +
         "</tr>";
     }).filter(Boolean).join("");
-    byId("spy-count").textContent = "Cobalt " + (d.mode || "") + " · " + (d.count || 0) + " buffered / " + (d.max || 0) + " · " + (d.dropped || 0) + " dropped";
+    byId("spy-count").textContent = (d.engine || "Spy") + " " + (d.mode || "") + " · " + (d.count || 0) + " buffered / " + (d.max || 0) + " · " + (d.dropped || 0) + " dropped";
     body.innerHTML = rows
       ? '<div class="table-wrap"><table><thead><tr><th>When</th><th>Kind</th><th>Remote</th><th>Args</th><th>#</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div>"
       : '<div class="empty"><div class="h">No matching captures</div></div>';
   }
   function loadSpyLogs(clientId) {
-    fetch("/api/spy/logs?client=" + encodeURIComponent(clientId) + "&limit=300")
+    var engine = spyState.engine;
+    fetch("/api/spy/logs?client=" + encodeURIComponent(clientId) + "&engine=" + encodeURIComponent(engine) + "&limit=300")
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (spyState.clientId !== clientId) return;
+        if (spyState.clientId !== clientId || spyState.engine !== engine) return;
         if (data && data.error) { spyState.err = data.error; spyState.data = null; }
         else { spyState.data = data; spyState.err = null; }
         if (activeTab === "spy") renderSpy();
       })
       .catch(function () {
-        if (spyState.clientId !== clientId) return;
+        if (spyState.clientId !== clientId || spyState.engine !== engine) return;
         spyState.err = "Request failed.";
         renderSpy();
       });
@@ -3355,7 +3357,7 @@ return p"></textarea>
     return header + rows + '<div class="muted" style="font-size:11px;margin-top:6px">Sample over last ' + r.sample + " calls. Click a row to open in Spy.</div></div>";
   }
   function loadBriefTopRemotes(clientId) {
-    fetch("/api/spy/logs?client=" + encodeURIComponent(clientId) + "&limit=2000")
+    fetch("/api/spy/logs?client=" + encodeURIComponent(clientId) + "&engine=" + encodeURIComponent(spyState.engine) + "&limit=2000")
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (briefState.clientId !== clientId) return;
@@ -3476,27 +3478,33 @@ return p"></textarea>
       if (activeTab === "output") renderOutput();
     }).catch(function () {});
   }
+  byId("spy-engine").addEventListener("change", function (e) {
+    spyState.engine = e.target.value; spyState.data = null; spyState.err = null;
+    byId("spy-mode").value = "auto";
+    byId("spy-mode").disabled = spyState.engine === "ketamine";
+    renderSpy();
+  });
   byId("spy-filter").addEventListener("input", function (e) { spyState.filter = e.target.value; renderSpy(); });
   byId("spy-autoref").addEventListener("change", function (e) { spyState.autoRefresh = e.target.checked; });
   byId("spy-start").addEventListener("click", function () {
     if (!spyState.clientId) return;
     var clientId = spyState.clientId;
     var button = byId("spy-start");
-    button.disabled = true; button.textContent = "Starting…";
-    fetch("/api/spy/start?client=" + encodeURIComponent(clientId) + "&mode=" + encodeURIComponent(byId("spy-mode").value), { method: "POST" })
+    button.disabled = true; byId("spy-engine").disabled = true; button.textContent = "Starting…";
+    fetch("/api/spy/start?client=" + encodeURIComponent(clientId) + "&engine=" + encodeURIComponent(spyState.engine) + "&mode=" + encodeURIComponent(byId("spy-mode").value), { method: "POST" })
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (spyState.clientId !== clientId) return;
         if (data.error) { spyState.err = data.error; renderSpy(); }
         else { spyState.err = null; loadSpyLogs(clientId); }
       })
-      .catch(function () { spyState.err = "Cobalt start request failed."; renderSpy(); })
-      .finally(function () { button.disabled = false; button.textContent = "Start Cobalt"; });
+      .catch(function () { spyState.err = "Spy start request failed."; renderSpy(); })
+      .finally(function () { button.disabled = false; byId("spy-engine").disabled = false; button.textContent = "Start spy"; });
   });
   byId("spy-refresh").addEventListener("click", function () { if (spyState.clientId) loadSpyLogs(spyState.clientId); });
   byId("spy-clear").addEventListener("click", function () {
     if (!spyState.clientId) return;
-    fetch("/api/spy/clear?client=" + encodeURIComponent(spyState.clientId), { method: "POST" })
+    fetch("/api/spy/clear?client=" + encodeURIComponent(spyState.clientId) + "&engine=" + encodeURIComponent(spyState.engine), { method: "POST" })
       .then(function (r) { return r.json(); })
       .then(function (data) { if (data.error) { spyState.err = data.error; renderSpy(); } else if (spyState.clientId) loadSpyLogs(spyState.clientId); })
       .catch(function () {});

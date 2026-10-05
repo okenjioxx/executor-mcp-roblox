@@ -1,15 +1,16 @@
 import { z } from "zod";
 import { defineTool } from "../../application/tool/define-tool.js";
-import { cobaltMode, runCobalt } from "../_shared/cobalt.js";
+import { cobaltMode, runRemoteSpy, spyEngine } from "../_shared/cobalt.js";
 
 export default defineTool({
   name: "ensure-remote-spy",
-  title: "Start Cobalt remote capture",
+  title: "Start the selected remote spy",
   category: "Remote Spy",
   mutatesState: true,
   description:
-    "WRITES LIVE GAME STATE. Loads bundled Cobalt 2.2.5.15 or attaches to an existing Cobalt session. Idempotently subscribes to its incoming/outgoing captures without adding separate game hooks. auto prefers RakNet when supported. max bounds the MCP capture buffer; Cobalt's own UI history is separate. A mode change requires remote-spy operation=restart. Returns status or error.",
+    "WRITES LIVE GAME STATE. Starts the selected engine (default cobalt), stopping the other spy on this client first. Cobalt is bundled; Ketamine is downloaded from a pinned upstream commit and hash-checked before loading. Ketamine requires hookfunction, hookmetamethod, getnamecallmethod, getcallbackvalue, setfenv, and crypt.hash. Idempotently attaches one capture observer. RakNet is Cobalt-only. max bounds the MCP buffer, separate from GUI history. Use remote-spy operation=restart for mode changes.",
   input: z.object({
+    engine: spyEngine,
     mode: cobaltMode.optional().default("auto"),
     max: z
       .number()
@@ -20,7 +21,7 @@ export default defineTool({
       .optional(),
     threadContext: z.number().int().optional(),
   }),
-  async execute({ mode, max, threadContext }, ctx) {
-    return runCobalt(ctx, "start", { mode, max }, threadContext);
+  async execute({ engine, mode, max, threadContext }, ctx) {
+    return runRemoteSpy(ctx, "start", { engine, mode, max }, threadContext);
   },
 });

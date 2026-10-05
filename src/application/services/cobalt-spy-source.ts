@@ -57,25 +57,43 @@ function longString(source: string): string {
   return `[${equals}[${source}]${equals}]`;
 }
 
-/** One adapter shared by MCP tools and dashboard; Cobalt owns all game hooks. */
+/** Shared bounded recorder; each backend owns its game hooks. */
 export function buildCobaltSpySource(
   operation: CobaltOperation,
   options: CobaltSpyOptions = {},
 ): string {
+  return buildCaptureSpySource(operation, options, "Cobalt", COBALT_BUNDLE, COBALT_VERSION);
+}
+
+/** Both backends expose capture observers, controls, code generation, and unload. */
+export function buildCaptureSpySource(
+  operation: CobaltOperation,
+  options: CobaltSpyOptions,
+  engineName: "Cobalt" | "Ketamine",
+  bundle: string,
+  version: string,
+): string {
   const boot =
     operation === "start" || operation === "restart"
-      ? `local __bundle = ${longString(COBALT_BUNDLE)}`
+      ? `local __bundle = ${longString(bundle)}`
       : "local __bundle = nil";
-  return `local __operation = ${literal(operation)}\nlocal __options = ${literal(options)}\nlocal __bundleVersion = ${literal(COBALT_VERSION)}\n${boot}\n${COBALT_ADAPTER}`;
+  return `local __engineName = ${literal(engineName)}\nlocal __operation = ${literal(operation)}\nlocal __options = ${literal(options)}\nlocal __bundleVersion = ${literal(version)}\n${boot}\n${COBALT_ADAPTER}`;
 }
 
 export const COBALT_ADAPTER = String.raw`
 if type(getgenv) ~= "function" then return { error = "getgenv not available" } end
 local env = getgenv()
+local engineName = __engineName or "Cobalt"
+local isKetamine = engineName == "Ketamine"
+local prefix = isKetamine and "__polaris_ketamine" or "__polaris_cobalt"
+local objectKey = isKetamine and "__polarisKetamineEngine" or "Cobalt"
+local loadingKey = isKetamine and "__polarisKetamineLoading" or "__polarisCobaltLoading"
+local modeKey = isKetamine and "__polarisKetamineMode" or "__polarisCobaltMode"
+local initializedKey = isKetamine and "__polarisKetamineInitialized" or "CobaltInitialized"
 local options = __options
 local operation = __operation
-local state = env.__polaris_cobaltSpy
-local cobalt = env.Cobalt
+local state = env[prefix .. "Spy"]
+local cobalt = env[objectKey]
 local function shared()
   return type(cobalt) == "table" and type(cobalt.shared) == "table" and cobalt.shared or nil
 end
@@ -114,7 +132,7 @@ local function status()
   local s = shared()
   local support = s and s.ExecutorSupport and s.ExecutorSupport.raknet
   return {
-    engine = "Cobalt", bundledVersion = __bundleVersion,
+    engine = engineName, bundledVersion = __bundleVersion,
     sessionId = state and state.sessionId or nil,
     loaded = ready() == true, active = ready() == true and state ~= nil and state.active == true and same(state.cobalt, cobalt),
     mode = s and (s.IsUsingRakNetHooks and "raknet" or "luau") or nil,
@@ -124,7 +142,7 @@ local function status()
     dropped = state and state.dropped or 0, captureErrors = state and state.errors or 0,
     latestId = state and state.nextId - 1 or 0,
     owned = state and state.owned == true or false,
-    cleanupCompatibility = s and s.PolarisCobaltPatched and "callback-or-handle" or "external-build",
+    cleanupCompatibility = isKetamine and "owned-hook-cleanup" or (s and s.PolarisCobaltPatched and "callback-or-handle" or "external-build"),
   }
 end
 
@@ -199,7 +217,7 @@ local function remoteId(instance)
     end
   end
   if not id then
-    id = "remote-" .. state.sessionId .. "-" .. state.nextRemote
+    id = "remote-" .. (isKetamine and "ketamine-" or "") .. state.sessionId .. "-" .. state.nextRemote
     state.nextRemote += 1
   end
   state.ids[instance] = id
@@ -227,7 +245,7 @@ local function push(info, instance, direction)
     resultsTruncated = info.InvokeResult ~= nil and resultsTruncated or nil,
   }
   state.nextId += 1
-  env.__polaris_cobaltNextId = state.nextId
+  env[prefix .. "NextId"] = state.nextId
   local slot
   if state.count == state.max then
     slot = state.head
@@ -242,14 +260,14 @@ end
 local function attach(max)
   local s = shared()
   local manager = s and s.CobaltPluginManager
-  local globals = manager and manager.Registry and manager.Registry.Interceptors and manager.Registry.Interceptors.Global
+  local globals = s and s.CaptureInterceptors or (manager and manager.Registry and manager.Registry.Interceptors and manager.Registry.Interceptors.Global)
   if not globals then return nil, "Cobalt capture API is unavailable; load the bundled build" end
   if not state or not same(state.cobalt, cobalt) then
     detach()
-    env.__polaris_cobaltGeneration = (env.__polaris_cobaltGeneration or 0) + 1
-    state = { sessionId = env.__polaris_cobaltGeneration, cobalt = cobalt, active = false, max = max, count = 0, head = 1, slots = {}, dropped = 0, errors = 0,
-      nextId = env.__polaris_cobaltNextId or 1, nextRemote = 1, ids = setmetatable({}, { __mode = "k" }), remotes = setmetatable({}, { __mode = "v" }), views = {} }
-    env.__polaris_cobaltSpy = state
+    env[prefix .. "Generation"] = (env[prefix .. "Generation"] or 0) + 1
+    state = { sessionId = env[prefix .. "Generation"], cobalt = cobalt, active = false, max = max, count = 0, head = 1, slots = {}, dropped = 0, errors = 0,
+      nextId = env[prefix .. "NextId"] or 1, nextRemote = 1, ids = setmetatable({}, { __mode = "k" }), remotes = setmetatable({}, { __mode = "v" }), views = {} }
+    env[prefix .. "Spy"] = state
   end
   if state.max ~= max then
     local keep = math.min(state.count, max)
@@ -268,7 +286,7 @@ local function attach(max)
       -- Returning nil preserves Cobalt's own log and UI behavior.
     end
     table.insert(state.registry, state.callback)
-    manager.HasInterceptors = true
+    if manager then manager.HasInterceptors = true end
     state.active = true
   end
   return true
@@ -305,12 +323,12 @@ if operation == "stop" or operation == "restart" then
   if ready() then
     local ok, err = pcall(shared().Unload)
     if not ok then return { error = "Cobalt unload failed: " .. text(err) } end
-    cobalt = env.Cobalt
+    cobalt = env[objectKey]
     if ready() then return { error = "Cobalt is still running after unload" } end
   end
   if operation == "stop" then
-    env.__polaris_cobaltSpy, state = nil, nil
-    return { stopped = true, engine = "Cobalt" }
+    env[prefix .. "Spy"], state = nil, nil
+    return { stopped = true, engine = engineName }
   end
 end
 if operation == "start" or operation == "restart" then
@@ -321,21 +339,21 @@ if operation == "start" or operation == "restart" then
     return { error = "Capture mode differs; use remote-spy operation=restart with the requested mode", restartRequired = true }
   end
   if not adopted then
-    if env.__polarisCobaltLoading then return { error = "Cobalt is already loading; retry status shortly" } end
-    if env.CobaltInitialized then return { error = "A previous Cobalt load has not completed; rejoin before loading again" } end
-    env.__polarisCobaltLoading = true
-    env.__polarisCobaltMode = mode
+    if env[loadingKey] then return { error = engineName .. " is already loading; retry status shortly" } end
+    if env[initializedKey] then return { error = "A previous spy load has not completed; rejoin before loading again" } end
+    env[loadingKey] = true
+    env[modeKey] = mode
     local ok, err = pcall(function()
-      local loader, compileError = loadstring(__bundle, "@polaris/cobalt-" .. __bundleVersion)
+      local loader, compileError = loadstring(__bundle, "@polaris/" .. string.lower(engineName) .. "-" .. __bundleVersion)
       if not loader then error(compileError) end
       loader()
       local deadline = os.clock() + 15
-      while not env.Cobalt and os.clock() < deadline do task.wait(0.1) end
+      while not env[objectKey] and os.clock() < deadline do task.wait(0.1) end
     end)
-    env.__polarisCobaltMode = nil
-    env.__polarisCobaltLoading = nil
-    cobalt = env.Cobalt
-    if not ok or not ready() then return { error = "Cobalt failed to initialize: " .. text(err or "timeout") } end
+    env[modeKey] = nil
+    env[loadingKey] = nil
+    cobalt = env[objectKey]
+    if not ok or not ready() then return { error = engineName .. " failed to initialize: " .. text(err or "timeout") } end
   end
   local ok, err = attach(math.clamp(math.floor(options.max or (state and state.max) or 500), 10, 5000))
   if not ok then return { error = err } end
@@ -347,7 +365,7 @@ if operation == "start" or operation == "restart" then
   return result
 end
 if not ready() or not state or not same(state.cobalt, cobalt) or not state.active then
-  return { notRunning = true, engine = "Cobalt", count = 0, returned = 0, logs = {}, error = operation == "control" and "Call ensure-remote-spy first" or nil }
+  return { notRunning = true, engine = engineName, count = 0, returned = 0, logs = {}, error = operation == "control" and "Call ensure-remote-spy first" or nil }
 end
 local s = shared()
 local target
@@ -364,6 +382,12 @@ if options.remoteId then
 end
 if operation == "control" then
   if not target then return { error = "remotePath or remoteId is required" } end
+  if type(s.ControlRemote) == "function" then
+    local result, err = s.ControlRemote(target, options.direction or "Both", options.control, options.enabled)
+    if not result then return { error = err } end
+    result.remoteId = remoteId(target)
+    return result
+  end
   local matches = 0
   for direction, category in pairs(s.Logs) do
     if options.direction == nil or options.direction == "Both" or options.direction == direction then
@@ -386,7 +410,7 @@ if operation == "clear" then
   local removed = state.count
   state.slots, state.count, state.head = {}, 0, 1
   if type(s.ClearLogs) == "function" then s.ClearLogs() end
-  return { cleared = true, removed = removed, engine = "Cobalt" }
+  return { cleared = true, removed = removed, engine = engineName }
 end
 local view
 if string.sub(operation, 1, 5) == "view-" then
@@ -394,11 +418,11 @@ if string.sub(operation, 1, 5) == "view-" then
   if operation == "view-start" then
     if state.views[key] then return { alreadyRunning = true, key = key } end
     state.views[key] = { afterId = state.nextId - 1, target = target, direction = options.direction or "Both" }
-    return { started = true, key = key, remote = target and path(target), max = state.max, engine = "Cobalt" }
+    return { started = true, key = key, remote = target and path(target), max = state.max, engine = engineName }
   elseif operation == "view-stop" then
     local existed = state.views[key] ~= nil
     state.views[key] = nil
-    return { stopped = true, wasActive = existed, key = key, engine = "Cobalt", captureContinues = true }
+    return { stopped = true, wasActive = existed, key = key, engine = engineName, captureContinues = true }
   end
   view = state.views[key]
   if not view then return { notRunning = true, key = key, calls = {}, entries = {}, count = 0 } end
@@ -450,7 +474,7 @@ if operation == "list" then
   table.sort(summaries, function(a, b) return a.totalCalls == b.totalCalls and a.latestId > b.latestId or a.totalCalls > b.totalCalls end)
   local total = #summaries
   while #summaries > limit do table.remove(summaries) end
-  return { engine = "Cobalt", count = total, returned = #summaries, truncated = #summaries < total, remotes = summaries, retention = "bounded MCP buffer" }
+  return { engine = engineName, count = total, returned = #summaries, truncated = #summaries < total, remotes = summaries, retention = "bounded MCP buffer" }
 end
 local result = status()
 result.returned, result.matching, result.truncated, result.logs = #logs, matching, #logs < matching, logs
