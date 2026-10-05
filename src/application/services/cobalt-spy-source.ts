@@ -9,6 +9,11 @@ export type CobaltOperation =
   | "list"
   | "clear"
   | "control"
+  | "configure"
+  | "pause"
+  | "resume"
+  | "controls"
+  | "reset-controls"
   | "view-start"
   | "view-fetch"
   | "view-stop"
@@ -30,6 +35,21 @@ export interface CobaltSpyOptions {
   enabled?: boolean;
   view?: string;
   callId?: number;
+  classFilter?: "RemoteEvent" | "UnreliableRemoteEvent" | "RemoteFunction";
+  blockedOnly?: boolean;
+  offset?: number;
+  resetControl?: "block" | "ignore" | "Both";
+  capture?: {
+    enabled?: boolean;
+    direction?: "Incoming" | "Outgoing" | "Both";
+    nameFilter?: string;
+    method?: string;
+    classFilter?: "RemoteEvent" | "UnreliableRemoteEvent" | "RemoteFunction";
+    blockedOnly?: boolean;
+  };
+  resetFilters?: boolean;
+  guiVisible?: boolean;
+  guiLogging?: boolean;
 }
 
 function literal(value: unknown): string {
@@ -128,6 +148,9 @@ local function ready()
   local s = shared()
   return s and not s.Unloaded and not s.CleanupFailed and type(s.Logs) == "table"
 end
+local function defaultCapture()
+  return { enabled = true, direction = "Both", blockedOnly = false }
+end
 local function status()
   local s = shared()
   local support = s and s.ExecutorSupport and s.ExecutorSupport.raknet
@@ -142,6 +165,12 @@ local function status()
     count = state and state.count or 0, max = state and state.max or 0,
     dropped = state and state.dropped or 0, captureErrors = state and state.errors or 0,
     latestId = state and state.nextId - 1 or 0,
+    capturing = ready() == true and state ~= nil and state.active == true and same(state.cobalt, cobalt) and (state.capture == nil or state.capture.enabled == true),
+    capture = state and table.clone(state.capture or defaultCapture()) or nil,
+    skippedCaptures = state and state.skipped or 0,
+    gui = s and type(s.GetSpySettings) == "function" and s.GetSpySettings() or nil,
+    capabilities = { captureConfiguration = true, pauseResume = true, controlInspection = not isKetamine or (s ~= nil and type(s.GetControls) == "function"), resetControls = not isKetamine or (s ~= nil and type(s.ResetControls) == "function"),
+      guiConfiguration = s ~= nil and type(s.ConfigureGUI) == "function", incomingEventBlocking = isKetamine and "unsupported" or "backend-dependent" },
     owned = state and state.owned == true or false,
     cleanupCompatibility = isKetamine and "owned-hook-cleanup" or (s and s.PolarisCobaltPatched and "callback-or-handle" or "external-build"),
   }
@@ -227,13 +256,24 @@ local function remoteId(instance)
 end
 local function push(info, instance, direction)
   if not state.active then return end
-  local args, count, truncated = packed(info.Arguments)
-  local results, resultCount, resultsTruncated = packed(info.InvokeResult)
   local s = shared()
   local methods = s.FunctionForClasses or {}
+  local remotePath = path(instance)
+  local method = methods[direction] and methods[direction][instance.ClassName] or "?"
+  local capture = state.capture
+  if not capture.enabled or (capture.direction ~= "Both" and capture.direction ~= direction)
+    or (capture.classFilter and capture.classFilter ~= instance.ClassName)
+    or (capture.method and capture.method ~= method)
+    or (capture.blockedOnly and info.Blocked ~= true)
+    or (capture.nameFilter and not string.find(string.lower(remotePath), string.lower(capture.nameFilter), 1, true)) then
+    state.skipped += 1
+    return
+  end
+  local args, count, truncated = packed(info.Arguments)
+  local results, resultCount, resultsTruncated = packed(info.InvokeResult)
   local record = {
-    id = state.nextId, remoteId = remoteId(instance), remote = path(instance), class = instance.ClassName,
-    direction = direction, method = methods[direction] and methods[direction][instance.ClassName] or "?",
+    id = state.nextId, remoteId = remoteId(instance), remote = remotePath, class = instance.ClassName,
+    direction = direction, method = method,
     args = args, argCount = count, argsTruncated = truncated,
     t = tonumber(info.CreationTime) or tick(), blocked = info.Blocked == true,
     isRakNet = info.IsRakNet == true, isActor = info.IsActor == true, isExecutor = info.IsExecutor,
@@ -267,7 +307,7 @@ local function attach(max)
     detach()
     env[prefix .. "Generation"] = (env[prefix .. "Generation"] or 0) + 1
     state = { sessionId = env[prefix .. "Generation"], cobalt = cobalt, active = false, max = max, count = 0, head = 1, slots = {}, dropped = 0, errors = 0,
-      nextId = env[prefix .. "NextId"] or 1, nextRemote = 1, ids = setmetatable({}, { __mode = "k" }), remotes = setmetatable({}, { __mode = "v" }), views = {} }
+      nextId = env[prefix .. "NextId"] or 1, nextRemote = 1, ids = setmetatable({}, { __mode = "k" }), remotes = setmetatable({}, { __mode = "v" }), views = {}, capture = defaultCapture(), skipped = 0 }
     env[prefix .. "Spy"] = state
   end
   if state.max ~= max then
@@ -276,6 +316,10 @@ local function attach(max)
     for i = 1, keep do slots[i] = state.slots[(state.head + state.count - keep + i - 2) % state.max + 1] end
     state.dropped += state.count - keep
     state.slots, state.head, state.count, state.max = slots, 1, keep, max
+  end
+  if not state.capture then
+    state.capture, state.skipped = defaultCapture(), 0
+    detach()
   end
   if not state.active or not state.callback or not table.find(state.registry or {}, state.callback) then
     detach()
@@ -368,9 +412,73 @@ if operation == "start" or operation == "restart" then
   return result
 end
 if not ready() or not state or not same(state.cobalt, cobalt) or not state.active then
-  return { notRunning = true, engine = engineName, count = 0, returned = 0, logs = {}, error = operation == "control" and "Call ensure-remote-spy first" or nil }
+  local needsRunning = operation == "control" or operation == "configure" or operation == "pause" or operation == "resume" or operation == "reset-controls"
+  return { notRunning = true, engine = engineName, count = 0, returned = 0, logs = {}, error = needsRunning and "Call ensure-remote-spy first" or nil }
 end
 local s = shared()
+if operation == "configure" then
+  if options.guiVisible ~= nil or options.guiLogging ~= nil then
+    if type(s.ConfigureGUI) ~= "function" then return { error = isKetamine and "Restart Ketamine to load GUI controls from the updated build" or "GUI settings are supported by Ketamine only; capture settings were not changed" } end
+    s.ConfigureGUI(options)
+  end
+  local ok, err = attach(math.clamp(math.floor(options.max or state.max), 10, 5000))
+  if not ok then return { error = err } end
+  local capture = options.resetFilters and defaultCapture() or table.clone(state.capture)
+  capture.enabled = state.capture.enabled
+  for key, value in options.capture or {} do capture[key] = value end
+  state.capture = capture
+  return status()
+end
+if operation == "pause" or operation == "resume" then
+  local ok, err = attach(state.max)
+  if not ok then return { error = err } end
+  state.capture.enabled = operation == "resume"
+  return status()
+end
+if operation == "reset-controls" then
+  if isKetamine and type(s.ResetControls) ~= "function" then return { error = "Restart Ketamine to load rule reset controls from the updated build" } end
+  local direction, control = options.direction or "Both", options.resetControl or "Both"
+  local changed = 0
+  if type(s.ResetControls) == "function" then changed = s.ResetControls(direction, control)
+  else
+    for selected, category in s.Logs do
+      if direction ~= "Both" and direction ~= selected then continue end
+      for _, log in category do
+        if control ~= "ignore" and log.Blocked then log:Block(); changed += 1 end
+        if control ~= "block" and log.Ignored then log:Ignore(); changed += 1 end
+      end
+    end
+  end
+  return { engine = engineName, reset = true, direction = direction, control = control, changed = changed }
+end
+if operation == "controls" then
+  if isKetamine and type(s.GetControls) ~= "function" then return { error = "Restart Ketamine to load rule inspection from the updated build" } end
+  local entries = {}
+  if type(s.GetControls) == "function" then entries = s.GetControls()
+  else
+    for direction, category in s.Logs do
+      for _, log in category do
+        if log.Blocked or log.Ignored then entries[#entries + 1] = { Instance = log.Instance, Direction = direction, Blocked = log.Blocked, Ignored = log.Ignored } end
+      end
+    end
+  end
+  local rows = {}
+  for _, entry in entries do
+    if options.direction and options.direction ~= "Both" and entry.Direction ~= "Both" and entry.Direction ~= options.direction then continue end
+    local remotePath = entry.Instance and path(entry.Instance) or entry.NameRule
+    if options.nameFilter and not string.find(string.lower(remotePath), string.lower(options.nameFilter), 1, true) then continue end
+    if options.blockedOnly and not entry.Blocked then continue end
+    rows[#rows + 1] = { remoteId = entry.Instance and remoteId(entry.Instance) or nil, remote = remotePath,
+      class = entry.Instance and entry.Instance.ClassName or nil, nameRule = entry.NameRule, direction = entry.Direction,
+      blocked = entry.Blocked == true, ignored = entry.Ignored == true, source = entry.Source or "spy" }
+  end
+  table.sort(rows, function(a, b) return (a.remote .. a.direction .. (a.remoteId or "") .. a.source) < (b.remote .. b.direction .. (b.remoteId or "") .. b.source) end)
+  local offset, limit = math.max(0, math.floor(options.offset or 0)), math.clamp(math.floor(options.limit or 100), 1, 5000)
+  local result = {}
+  for i = offset + 1, math.min(#rows, offset + limit) do result[#result + 1] = rows[i] end
+  local hasMore = offset + #result < #rows
+  return { engine = engineName, count = #rows, returned = #result, truncated = hasMore, nextOffset = hasMore and offset + #result or nil, controls = result }
+end
 local target
 if options.remotePath then
   local err
@@ -457,6 +565,8 @@ for i = state.count - 1, 0, -1 do
   if direction ~= "Both" and record.direction ~= direction then continue end
   if target and not same(item.instance, target) then continue end
   if options.method and record.method ~= options.method then continue end
+  if options.classFilter and record.class ~= options.classFilter then continue end
+  if options.blockedOnly and not record.blocked then continue end
   if options.raknetOnly and not record.isRakNet then continue end
   if options.nameFilter and not string.find(string.lower(record.remote), string.lower(options.nameFilter), 1, true) then continue end
   matching += 1

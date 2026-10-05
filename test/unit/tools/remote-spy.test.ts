@@ -22,9 +22,9 @@ function stubContext(canned: unknown) {
 }
 
 describe("Cobalt remote-spy tools", () => {
-  it("registers eleven unique tools and labels live-state changes", () => {
-    expect(remoteSpyTools).toHaveLength(11);
-    expect(new Set(remoteSpyTools.map((t) => t.name)).size).toBe(11);
+  it("registers twelve unique tools and labels live-state changes", () => {
+    expect(remoteSpyTools).toHaveLength(12);
+    expect(new Set(remoteSpyTools.map((t) => t.name)).size).toBe(12);
     const readers = [
       "list-remotes",
       "get-remote-signature",
@@ -60,7 +60,8 @@ describe("Cobalt remote-spy tools", () => {
     await getLogs.execute(input, ctx);
     const { threadContext, engine, ...options } = input;
     expect(calls[0]?.source).toBe(buildRemoteSpySource(engine, "logs", options));
-    expect(calls[0]?.source.length).toBeLessThan(25000);
+    expect(calls[0]?.source).toContain("local __bundle = nil");
+    expect(calls[0]?.source.length).toBeLessThan(30000);
     expect(calls[0]?.options).toEqual({ threadContext: threadContext ?? 8, timeoutMs: 15000 });
   });
   it("flags Cobalt failures as tool errors", async () => {

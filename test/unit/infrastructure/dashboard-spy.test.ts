@@ -25,7 +25,8 @@ describe("Cobalt dashboard service", () => {
     await service.logs(client.id, 300);
     expect(calls[0]?.source).toBe(buildRemoteSpySource("cobalt", "logs", { limit: 300 }));
     expect(calls[0]?.id).toBe(client.id);
-    expect(calls[0]?.source.length).toBeLessThan(25000);
+    expect(calls[0]?.source).toContain("local __bundle = nil");
+    expect(calls[0]?.source.length).toBeLessThan(30000);
   });
   it("starts the pinned bundle with requested mode and clears the shared history", async () => {
     const { service, calls, client } = setup();

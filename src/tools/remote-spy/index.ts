@@ -11,8 +11,9 @@ import clearRemoteSpyLogs from "./clear-remote-spy-logs.js";
 import blockRemote from "./block-remote.js";
 import ignoreRemote from "./ignore-remote.js";
 import remoteSpy from "./remote-spy.js";
+import configureRemoteSpy from "./configure-remote-spy.js";
 
-/** Static inspection plus Cobalt-backed capture and control tools. */
+/** Static inspection plus selectable spy capture and control tools. */
 export const remoteSpyTools: Tool[] = [
   listRemotes,
   getRemoteSignature,
@@ -25,4 +26,5 @@ export const remoteSpyTools: Tool[] = [
   blockRemote,
   ignoreRemote,
   remoteSpy,
+  configureRemoteSpy,
 ];

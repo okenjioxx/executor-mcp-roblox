@@ -91,6 +91,37 @@ for i = 1, 6 do emit(s, info(), a, "Outgoing") end
 for i = 1, 2 do emit(s, info(), b, "Outgoing") end
 local ranked = run("list", { limit = 1, summaryOnly = true }); eq(ranked.remotes[1].remoteId, idA); eq(ranked.remotes[1].totalCalls, 6); eq(ranked.truncated, true)
 eq(run("start", { mode = "luau" }).restartRequired, true)
+-- Shared capture configuration and reversible rule inspection/reset.
+local savedLatest = run("status", {}).latestId
+eq(run("configure", { capture = { direction = "Incoming", nameFilter = "DUPLICATE", method = "OnClientEvent", classFilter = "RemoteEvent" } }).capture.direction, "Incoming")
+emit(s, info(), a, "Outgoing"); eq(run("status", {}).latestId, savedLatest)
+emit(s, info(), a, "Incoming"); eq(run("status", {}).latestId, savedLatest + 1)
+eq(run("logs", { direction = "Incoming", classFilter = "RemoteFunction" }).returned, 0)
+eq(type(run("configure", { capture = { enabled = false }, max = 100, guiVisible = false }).error), "string")
+eq(run("status", {}).capturing, true); eq(run("status", {}).max, 10)
+eq(run("pause", {}).capturing, false)
+emit(s, info(), a, "Incoming"); eq(run("status", {}).latestId, savedLatest + 1)
+eq(run("resume", {}).capturing, true); eq(run("status", {}).capture.direction, "Incoming")
+run("control", { remoteId = idA, direction = "Outgoing", control = "block", enabled = true })
+local controls = run("controls", { limit = 1 })
+eq(controls.count, 2); eq(controls.returned, 1); eq(controls.nextOffset, 1)
+eq(run("controls", { direction = "Outgoing", blockedOnly = true }).controls[1].remoteId, idA)
+eq(run("reset-controls", { direction = "Outgoing", resetControl = "block" }).changed, 1)
+eq(outA.Blocked, false); eq(inA.Ignored, true)
+eq(run("reset-controls", { direction = "Incoming", resetControl = "ignore" }).changed, 1)
+eq(run("controls", {}).count, 0)
+eq(run("status", {}).capture.direction, "Incoming")
+eq(run("configure", { resetFilters = true, max = 20 }).capture.direction, "Both")
+eq(run("status", {}).latestId, savedLatest + 1)
+-- Upgrade an observer created by the previous build without losing its history/IDs.
+local oldCallback = env.__polaris_cobaltSpy.callback
+env.__polaris_cobaltSpy.capture = nil
+eq(run("status", {}).capture.direction, "Both")
+eq(run("configure", { capture = { enabled = false } }).capturing, false)
+assert(env.__polaris_cobaltSpy.callback ~= oldCallback)
+eq(#s.CobaltPluginManager.Registry.Interceptors.Global.All, 1)
+eq(run("resume", {}).capturing, true)
+eq(run("logs", {}).logs[1].id, savedLatest + 1)
 -- Invalid restart cannot unload the running spy.
 raknet.is_enabled = function() return false end
 eq(type(run("restart", { mode = "raknet" }).error), "string"); eq(run("status", {}).active, true)

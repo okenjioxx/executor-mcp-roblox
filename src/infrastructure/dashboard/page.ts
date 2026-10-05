@@ -3158,7 +3158,7 @@ return p"></textarea>
         '<td style="text-align:right"><button class="scopy" data-copy="' + esc(snippet) + '" title="Copy capture JSON (includes results and metadata)">copy</button></td>' +
         "</tr>";
     }).filter(Boolean).join("");
-    byId("spy-count").textContent = (d.engine || "Spy") + " " + (d.mode || "") + " · " + (d.count || 0) + " buffered / " + (d.max || 0) + " · " + (d.dropped || 0) + " dropped";
+    byId("spy-count").textContent = (d.engine || "Spy") + " " + (d.mode || "") + (d.capturing === false ? " · capture paused" : "") + " · " + (d.count || 0) + " buffered / " + (d.max || 0) + " · " + (d.dropped || 0) + " dropped";
     body.innerHTML = rows
       ? '<div class="table-wrap"><table><thead><tr><th>When</th><th>Kind</th><th>Remote</th><th>Args</th><th>#</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div>"
       : '<div class="empty"><div class="h">No matching captures</div></div>';

@@ -1,5 +1,18 @@
 # Validation
 
+## AI spy controls: 2.0.0-spies.2
+
+Checked on 2026-10-05 on Windows:
+
+- `pnpm verify`: typecheck, lint, and all 461 tests in 61 files passed.
+- `pnpm build`: passed.
+- `pnpm test:luau`: compiled the full adapted Ketamine source, bundled Cobalt, and 17 adapter operations. Production Ketamine bridge/upstream modules passed 131 assertions; Cobalt passed 132 assertions and both RakNet registration/cleanup variants.
+- Added checks for persistent AND-combined filters, query class/blocked-only filters, pause/resume preserving network controls, direction-scoped rule inspection/reset, pagination, GUI name rules, independent GUI logging/visibility, queued-GUI clear, buffer resize/history retention, and old observer/backend upgrade handling.
+- Compiled server smoke check passed: build identity, 289 registered tools, capture/GUI schemas, new rule operations, generated `mcp.configureRemoteSpy` types, and dashboard JavaScript syntax/paused-state text.
+- Reviewed the implementation diff and effective API descriptions. Changed authored files pass Prettier and `git diff --check`.
+
+No live Roblox or executor session was changed or tested. Full GUI scheduling and executor compatibility still need live validation. Earlier whole-repository formatting and coverage gate limitations remain separate from this feature's checks.
+
 ## Selectable spies: 2.0.0-spies.1
 
 Checked on 2026-10-05 on Windows:

@@ -6,7 +6,7 @@
 
 An MCP server that connects an AI client to a live Roblox game. The model calls a tool, the server runs Luau in the game, and hands back structured data. The agent can reverse-engineer scripts, walk the instance tree, spy on remotes, scan memory, hook functions, orchestrate work across many connected clients, and more.
 
-It ships **288 tools** across 22 categories, a dashboard with ten tabs, persistent playbooks and session traces, a token-gated bridge, and a Luau scripting surface (`mcp.*`) that lets one in-game script call any of the server's tools — sequentially, in parallel, batched, or across N clients at once. Schemas are introspectable at runtime via `mcp.help(name?)` so a script never has to guess what arguments a tool takes.
+It ships **289 tools** across 22 categories, a dashboard with ten tabs, persistent playbooks and session traces, a token-gated bridge, and a Luau scripting surface (`mcp.*`) that lets one in-game script call any of the server's tools — sequentially, in parallel, batched, or across N clients at once. Schemas are introspectable at runtime via `mcp.help(name?)` so a script never has to guess what arguments a tool takes.
 
 ## Start here
 
@@ -32,7 +32,7 @@ Use it to explore an instance tree, read properties, inspect scripts and functio
 
 ## What's in the box
 
-### Tools (288 across 22 categories)
+### Tools (289 across 22 categories)
 
 The big ones you'll reach for first:
 
@@ -40,7 +40,7 @@ The big ones you'll reach for first:
 - **`script` (persistent VM with `mcp.*`).** Write one Luau program that can ALSO call any other tool inline as `mcp.<tool>(args)` and use the result. Globals you define persist across calls (REPL-style); `vm-reset` wipes the VM.
 - **`script-fanout`.** Run one script on N connected clients in parallel; per-client `{result, output}` returned with a summary.
 - **Reverse engineering.** GC walking, closure constants/upvalues/protos, bytecode disassembly, call graphs, duplicate-function detection, `filtergc`. 34 tools.
-- **Remotes.** Inventory, signatures, selectable Cobalt/Ketamine incoming/outgoing capture, reversible supported block/ignore, filtered logs, and generated call code. 11 tools.
+- **Remotes.** Inventory, signatures, selectable Cobalt/Ketamine incoming/outgoing capture, persistent filters, pause/resume, reversible block/ignore, active-rule inspection/reset, Ketamine GUI controls, and generated call code. 12 tools.
 - **Instrumentation.** Hook-and-log, count calls, spoof returns, trace durations.
 - **Closures.** Complete Volt closure primitives: classify/hash/clone/wrap/invoke/hook/restore, retained function handles, stack visibility, environments, constants, upvalues, and protos.
 - **Execution-footprint audit.** One bounded read-only Luau report for virtual-input provenance, `getfenv`/global leaks, closure and hook identity, script/source exposure, executor fingerprints, evidence confidence, and truncation telemetry.
@@ -69,7 +69,7 @@ See [`docs/architecture/tool-definition-quality.md`](docs/architecture/tool-defi
 Open `http://127.0.0.1:16384/` once the server's running. Ten tabs, flat-dark, sub-100ms live updates over WebSocket:
 
 - **Clients** — connected games with PlaceId/JobId chips and click-to-explore.
-- **Tools** — category-grouped browser of all 288 tools with search.
+- **Tools** — category-grouped browser of all 289 tools with search.
 - **Activity** — live tool-call stream with text/category/outcome filters.
 - **Intelligence** — bounded live perceive→resolve→act→verify/recover timeline with targets, confidence, evidence, rollback, and teaching state.
 - **Explorer** — Studio-style game tree with real Studio class icons (314 mapped), Properties + Connections panels, paged children with hover prefetch, double-click decompile tabs, a bounded proto/function tree, origin/upvalue metadata, exact line jumps, and cross-script reference navigation.
@@ -144,7 +144,7 @@ The tool never touches the transport and never picks a client. The invoker resol
 
 ## Cobalt remote spy (Potassium)
 
-You can also select **Ketamine** with `remote-spy` input `{"operation":"start","engine":"ketamine"}`. The AI can capture both directions, block/unblock outgoing remotes and incoming function callbacks, and switch engines one at a time. Cobalt remains the default and provides RakNet support. See [the dual-spy setup guide](docs/KETAMINE_REMOTE_SPY.md) for requirements, controls, and limitations.
+You can also select **Ketamine** with `remote-spy` input `{"operation":"start","engine":"ketamine"}`. The AI can capture both directions, block/unblock outgoing remotes and incoming function callbacks, and switch engines one at a time. `configure-remote-spy` adds persistent capture filters, pause/resume, buffer resizing, and Ketamine GUI visibility/logging; `remote-spy` can inspect/reset active block and ignore rules. Cobalt shares the capture and rule-management improvements and retains RakNet support. See [the dual-spy setup guide](docs/KETAMINE_REMOTE_SPY.md) for requirements, examples, and limitations.
 
 This build keeps Polaris as the MCP server and uses bundled **Cobalt 2.2.5.15** as its remote-spy engine. All capture tools and the dashboard share one Cobalt subscription. Start with `ensure-remote-spy` using `{ "mode": "raknet" }`, or use the dashboard's **Start Cobalt** button. `remote-spy` adds lifecycle/status controls, ranked captures, and call-code generation.
 

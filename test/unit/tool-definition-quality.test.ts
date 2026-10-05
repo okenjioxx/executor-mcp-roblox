@@ -13,7 +13,7 @@ describe("tool definition quality compiler", () => {
     const tools = allTools();
     const names = new Set(tools.map((tool) => tool.name));
 
-    expect(tools).toHaveLength(288);
+    expect(tools).toHaveLength(289);
     expect(names.size).toBe(tools.length);
     expect(new Set(tools.map((tool) => tool.category))).toEqual(new Set(TOOL_CATEGORIES));
 

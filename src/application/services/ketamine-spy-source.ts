@@ -29,10 +29,10 @@ local first = assert(string.find(source, 'modules[objects["Instance11"]] = funct
 local last = assert(string.find(source, 'modules[objects["Instance7"]] = function()', first, true))
 local remoteSource = string.sub(source, first, last - 1)
 remoteSource = replaceOnce(remoteSource, "local cons = shared.Connections", "local bridge = getgenv().__polarisKetamineBridge\n    local cons = shared.Connections")
-remoteSource = replaceOnce(remoteSource, "local logSpeed = shared:AddObject({ })", "bridge.Bind(shared, block, ignore, logs)\n    local logSpeed = shared:AddObject({ })")
+remoteSource = replaceOnce(remoteSource, "local logSpeed = shared:AddObject({ })", "bridge.Bind(shared, block, ignore, logs, logStack)\n    local logSpeed = shared:AddObject({ })")
 remoteSource = replaceOnce(remoteSource,
   "local function addLogToStack(event, from, args, caller, got)",
-  "local function addLogToStack(event, from, args, caller, got)\n        bridge.Capture(event, from, args, caller, got)")
+  "local function addLogToStack(event, from, args, caller, got)\n        bridge.Capture(event, from, args, caller, got)\n        if not bridge.GuiLogging then return end")
 -- Fix upstream argument/caller ordering and preserve nil arity in forwarding.
 remoteSource = remoteSource:gsub("cllr or getcaller%(%)", "cllr or (getcaller and getcaller())")
 remoteSource = remoteSource:gsub("addLogToStack%(self, false, cllr or %(getcaller and getcaller%(%)%), args,", "addLogToStack(self, false, args, cllr or (getcaller and getcaller()),")
@@ -81,13 +81,13 @@ if type(loader) ~= "function" then error("Ketamine preflight is required before 
 if env.__KetamineShared and not env.__polarisKetamineEngine then
   error("An external Ketamine session is running; close it before loading the MCP adapter")
 end
-local bridge = { IncomingBlocked = {}, IncomingCallbacks = {}, Ignored = { Incoming = {}, Outgoing = {} }, Seen = { Incoming = {}, Outgoing = {} }, Stopped = false }
+local bridge = { IncomingBlocked = {}, IncomingCallbacks = {}, Ignored = { Incoming = {}, Outgoing = {} }, Seen = { Incoming = {}, Outgoing = {} }, Stopped = false, GuiLogging = true }
 local backend = { Logs = {}, CaptureInterceptors = { All = {} }, IsUsingRakNetHooks = false,
   FunctionForClasses = { Outgoing = { RemoteEvent = "FireServer", UnreliableRemoteEvent = "FireServer", RemoteFunction = "InvokeServer" }, Incoming = { RemoteEvent = "OnClientEvent", UnreliableRemoteEvent = "OnClientEvent", RemoteFunction = "OnClientInvoke" } } }
 env.__polarisKetamineBridge = bridge
-local shared, outgoingBlocked, guiIgnore, guiLogs
-bridge.Bind = function(s, block, ignore, logs)
-  shared, outgoingBlocked, guiIgnore, guiLogs = s, block, ignore, logs
+local shared, outgoingBlocked, guiIgnore, guiLogs, guiQueue
+bridge.Bind = function(s, block, ignore, logs, queue)
+  shared, outgoingBlocked, guiIgnore, guiLogs, guiQueue = s, block, ignore, logs, queue
 end
 bridge.HookCallback = function(instance, original, implementation)
   local wrapper = function(...) return implementation(original, ...) end
@@ -125,7 +125,57 @@ backend.ControlRemote = function(instance, direction, control, enabled)
   result[control == "block" and "blocked" or "ignored"] = enabled
   return result
 end
+backend.GetSpySettings = function()
+  return { visible = shared ~= nil and shared.PolarisRoot.Enabled == true, logging = bridge.GuiLogging }
+end
+backend.ConfigureGUI = function(options)
+  if options.guiVisible ~= nil then shared.PolarisRoot.Enabled = options.guiVisible end
+  if options.guiLogging ~= nil then
+    bridge.GuiLogging = options.guiLogging
+    if not options.guiLogging and guiQueue then table.clear(guiQueue) end
+  end
+end
+backend.GetControls = function()
+  local entries, indexed = {}, { Incoming = {}, Outgoing = {} }
+  local function add(instance, direction, property)
+    local entry = indexed[direction][instance]
+    if not entry then
+      entry = { Instance = instance, Direction = direction }
+      indexed[direction][instance] = entry; entries[#entries + 1] = entry
+    end
+    entry[property] = true
+  end
+  for instance in bridge.IncomingBlocked do add(instance, "Incoming", "Blocked") end
+  for direction, ignored in bridge.Ignored do for instance in ignored do add(instance, direction, "Ignored") end end
+  for target, blocked in outgoingBlocked do
+    if not blocked then continue end
+    if typeof(target) == "Instance" then add(target, "Outgoing", "Blocked")
+    elseif type(target) == "string" then entries[#entries + 1] = { NameRule = target, Direction = "Outgoing", Blocked = true, Source = "gui" } end
+  end
+  for target, ignored in guiIgnore do
+    if not ignored then continue end
+    entries[#entries + 1] = { Instance = typeof(target) == "Instance" and target or nil, NameRule = type(target) == "string" and target or nil, Direction = "Both", Ignored = true, Source = "gui" }
+  end
+  return entries
+end
+backend.ResetControls = function(direction, control)
+  local changed = 0
+  local function clear(rules)
+    for target, enabled in rules do if enabled then changed += 1 end rules[target] = nil end
+  end
+  if control ~= "ignore" then
+    if direction ~= "Outgoing" then clear(bridge.IncomingBlocked) end
+    if direction ~= "Incoming" then clear(outgoingBlocked) end
+  end
+  if control ~= "block" then
+    if direction ~= "Outgoing" then clear(bridge.Ignored.Incoming) end
+    if direction ~= "Incoming" then clear(bridge.Ignored.Outgoing) end
+    if direction == "Both" then clear(guiIgnore) end
+  end
+  return changed
+end
 backend.ClearLogs = function()
+  if guiQueue then table.clear(guiQueue) end
   if guiLogs then
     for _, logs in guiLogs do for _, log in logs do log:Destroy() end table.clear(logs) end
   end

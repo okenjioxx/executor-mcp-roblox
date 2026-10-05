@@ -1,6 +1,6 @@
 # Selectable Cobalt and Ketamine spies
 
-Build `2.0.0-spies.1` adds `engine: "cobalt" | "ketamine"` to the existing capture/control tools. Cobalt remains the default. One engine runs per Roblox client; different clients can choose different engines.
+Build `2.0.0-spies.2` adds persistent capture configuration, pause/resume, active-rule inspection/reset, and Ketamine GUI controls. Select `engine: "cobalt" | "ketamine"` on capture/control tools. Cobalt remains the default. One engine runs per Roblox client; different clients can choose different engines.
 
 ## Setup and captures
 
@@ -10,15 +10,39 @@ Run `pnpm build`, stop your older server, restart the MCP client, and reconnect 
 { "operation": "start", "engine": "ketamine", "max": 500 }
 ```
 
+If Ketamine was already running from the older build, use `operation: "restart"` once to load its new GUI and rule-management controls. This expires its old IDs/views and resets configuration.
+
 Read captures using `get-remote-spy-logs`:
 
 ```json
 { "engine": "ketamine", "direction": "Both", "limit": 100 }
 ```
 
-`Incoming`/`Outgoing`, `remoteId`, `remotePath`, `nameFilter`, `method`, and `afterId` filters are supported. Captures preserve packed argument arity, nils, and bounded typed previews. `gap` indicates expired history. IDs distinguish duplicate instance names and expire after a restart. Supply the engine on subsequent calls; omitted selectors target Cobalt.
+`Incoming`/`Outgoing`, `remoteId`, `remotePath`, `nameFilter`, `method`, `classFilter`, `blockedOnly`, and `afterId` filters are supported. These query filters affect only the current read. Captures preserve packed argument arity, nils, and bounded typed previews. `gap` indicates expired history. IDs distinguish duplicate instance names and expire after a restart. Supply the engine on subsequent calls; omitted selectors target Cobalt.
 
-Inside `script`, use `mcp.remoteSpy`, `mcp.getRemoteSpyLogs`, and `mcp.blockRemote`. Inspect their schemas with `mcp.help`.
+Inside `script`, use `mcp.remoteSpy`, `mcp.configureRemoteSpy`, `mcp.getRemoteSpyLogs`, and `mcp.blockRemote`. Inspect their schemas with `mcp.help`.
+
+## Configure capture and the spy itself
+
+Call `configure-remote-spy` to patch settings without restarting:
+
+```json
+{
+  "engine": "ketamine",
+  "max": 1000,
+  "capture": { "enabled": true, "direction": "Incoming", "classFilter": "RemoteFunction" },
+  "guiVisible": false,
+  "guiLogging": false
+}
+```
+
+This keeps incoming RemoteFunction callbacks in MCP history, hides Ketamine's window, and stops new GUI entries. Remote calls continue normally unless an existing block rule applies. Omitted settings retain their values; filters affect future MCP records and leave existing history intact. `max` accepts 10–5000 calls and preserves the newest history, IDs, and views when resized.
+
+`capture` supports `enabled`, `direction`, `nameFilter` (a case-insensitive literal path substring), `method`, `classFilter`, and `blockedOnly`. Filters combine with AND. Use `resetFilters: true` to clear filters before applying a new patch; this preserves pause state, block/ignore rules, and history. An empty `nameFilter` also clears the name filter. Configuration resets on restart.
+
+Use `remote-spy` with `{"engine":"ketamine","operation":"pause"}` or `"resume"` for quick recording control. These preserve hooks, filters, block/ignore rules, and GUI logging. `configure-remote-spy` can also pause/resume using `capture.enabled`. The same capture/buffer controls work with Cobalt; GUI settings are Ketamine-only.
+
+`remote-spy` `status` returns effective `capture`, `capturing`, `gui`, `skippedCaptures`, and `capabilities`. `active` means the MCP observer is attached; `capturing` also checks whether recording is enabled. `skippedCaptures` counts captures rejected by pause or capture filters; buffer evictions appear separately in `dropped`. GUI/MCP ignore rules suppress captures before this counter.
 
 ## Block and unblock
 
@@ -40,13 +64,34 @@ Send the same request with `blocked: false` to undo it. `remotePath` is also sup
 | Incoming RemoteEvent blocking                                       | Unsupported; returns an explicit error |
 | RakNet capture                                                      | Cobalt only                            |
 
-Unsupported incoming-event block requests, including `direction: "Both"`, do not change outgoing block state. Clear GUI name-based blocks or restart before using MCP instance controls; name rules can affect several same-named instances.
+Unsupported incoming-event block requests, including `direction: "Both"`, do not change outgoing block state. Clear GUI name-based blocks with `reset-controls` or restart before using MCP instance controls; name rules can affect several same-named instances.
+
+Inspect active block/ignore rules through `remote-spy`:
+
+```json
+{ "engine": "ketamine", "operation": "controls", "direction": "Both", "limit": 100, "offset": 0 }
+```
+
+Results include instance IDs, direction, `blocked`/`ignored`, and GUI name rules. Use `nextOffset` when `truncated` is true. `nameFilter` and `blockedOnly` can narrow this list. Instance-specific block/ignore operations still use a captured `remoteId` or observed `remotePath`.
+
+To unblock all outgoing remotes without changing incoming controls or history:
+
+```json
+{
+  "engine": "ketamine",
+  "operation": "reset-controls",
+  "direction": "Outgoing",
+  "resetControl": "block"
+}
+```
+
+`resetControl` accepts `block`, `ignore`, or `Both` (default). Resetting `direction: "Both"` also clears Ketamine's GUI ignore rules, which apply across both directions. A direction-specific ignore reset preserves these global GUI rules. Outgoing block reset clears GUI name blocks as well. The result's `changed` counts individual rules cleared. Cobalt also supports rule inspection/reset for its observed logs.
 
 ## Additional controls and switching
 
-- `remote-spy` supports status, ranked remote lists, filtered logs, clear, code generation, block/unblock, ignore/unignore, restart, and stop.
+- `remote-spy` supports status, configure, pause/resume, active controls, reset-controls, ranked remote lists, filtered logs, clear, code generation, block/unblock, ignore/unignore, restart, and stop.
 - `ignore-remote` suppresses Ketamine MCP captures for an instance/direction while calls continue. Ketamine GUI ignore rules are separate.
-- `clear-remote-spy-logs` clears MCP/GUI history while retaining controls and capture.
+- `clear-remote-spy-logs` clears MCP/GUI history and queued GUI entries while retaining controls and capture configuration.
 - `monitor-remote` and `trace-remote-traffic` create views of the existing buffer without extra hooks.
 - `code` uses Ketamine's serializer on retained raw arguments and returns Luau without replaying it. Review generated instance paths when sibling names are duplicated.
 

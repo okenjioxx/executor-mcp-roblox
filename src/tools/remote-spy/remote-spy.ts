@@ -1,6 +1,14 @@
 import { z } from "zod";
 import { defineTool } from "../../application/tool/define-tool.js";
-import { cobaltDirection, cobaltMode, runRemoteSpy, spyEngine } from "../_shared/cobalt.js";
+import {
+  cobaltDirection,
+  cobaltMode,
+  remoteClass,
+  remoteMethod,
+  runRemoteSpy,
+  spyConfiguration,
+  spyEngine,
+} from "../_shared/cobalt.js";
 
 export default defineTool({
   name: "remote-spy",
@@ -8,7 +16,7 @@ export default defineTool({
   category: "Remote Spy",
   mutatesState: true,
   description:
-    "WRITES LIVE GAME STATE for start/restart/stop/clear/block/unblock/ignore/unignore. Select engine=cobalt (default) or ketamine. Starting another engine stops the previous spy on this client after preflight succeeds. Read operations never load either engine. Lists ranked remotes, filtered logs, and generates call code without replaying it. Block/ignore require observed remotes. Ketamine incoming RemoteEvent blocking is unsupported; outgoing calls and incoming function callbacks can be blocked. restart expires IDs/views; stop unloads the selected session, including an adopted Cobalt GUI/hooks.",
+    "WRITES LIVE GAME STATE. Controls the selected spy: lifecycle, configure, pause/resume, clear, block/unblock, ignore/unignore, and reset-controls. Select engine=cobalt (default) or ketamine. status reports effective capture/GUI settings and capabilities; controls lists active block/ignore rules with limit/offset and direction filters. reset-controls clears block/ignore rules in the selected direction, preserving history and capture settings; Ketamine GUI ignore rules span Both and reset only with direction=Both. logs/list support query filters; code generates call code without replay. Configuration is a patch; capture filters affect future MCP records only. Pausing recording preserves blocking and GUI logging. Starting another engine stops the previous after preflight; read/configuration operations never load spies. Block/ignore require observed remotes. Ketamine cannot block incoming RemoteEvents. restart expires IDs/views and resets configuration; stop unloads the selected GUI/hooks.",
   input: z.object({
     engine: spyEngine,
     operation: z.enum([
@@ -24,14 +32,32 @@ export default defineTool({
       "ignore",
       "unignore",
       "code",
+      "configure",
+      "pause",
+      "resume",
+      "controls",
+      "reset-controls",
     ]),
     mode: cobaltMode.optional().default("auto"),
-    max: z.number().int().optional(),
+    ...spyConfiguration.shape,
     limit: z.number().int().optional().default(100),
+    offset: z
+      .number()
+      .int()
+      .nonnegative()
+      .optional()
+      .describe("Pagination offset for controls only."),
+    resetControl: z
+      .enum(["block", "ignore", "Both"])
+      .optional()
+      .describe("For reset-controls: which rules to clear; defaults to Both."),
     direction: cobaltDirection.optional().default("Both"),
     remotePath: z.string().optional(),
     remoteId: z.string().optional(),
     nameFilter: z.string().optional(),
+    method: remoteMethod.optional(),
+    classFilter: remoteClass.optional(),
+    blockedOnly: z.boolean().optional(),
     afterId: z.number().int().nonnegative().optional(),
     summaryOnly: z.boolean().optional().default(true),
     callId: z.number().int().positive().optional(),
@@ -56,7 +82,20 @@ export default defineTool({
       return { data: { error: "callId is required" }, isError: true };
     return runRemoteSpy(
       ctx,
-      operation as "status" | "start" | "restart" | "stop" | "list" | "logs" | "clear" | "code",
+      operation as
+        | "status"
+        | "start"
+        | "restart"
+        | "stop"
+        | "list"
+        | "logs"
+        | "clear"
+        | "code"
+        | "configure"
+        | "pause"
+        | "resume"
+        | "controls"
+        | "reset-controls",
       options,
       threadContext,
     );

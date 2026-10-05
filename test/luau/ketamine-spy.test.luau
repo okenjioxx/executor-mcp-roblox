@@ -77,8 +77,14 @@ local function loadUpstream()
         AddObject = function(_, value) return value end, AddButton = function(_, button) return button end,
         CodeBox = function() return ui() end, OnCloseEvent = event(), PolarisRoot = ui(), Clipboard = function() end }
     shared.OnCloseEvent.Event = event()
+    shared.PolarisRoot.Enabled = true
     shared.HookFunction = hookModule()(shared)
     env.__KetamineShared, currentShared = shared, shared
+    local bind = env.__polarisKetamineBridge.Bind
+    env.__polarisKetamineBridge.Bind = function(s, block, ignore, logs, queue)
+        shared.TestSpyRules = { block = block, ignore = ignore, logs = logs, queue = queue }
+        return bind(s, block, ignore, logs, queue)
+    end
     remoteModule()(shared, ui())
 end
 function loadstring(source, chunk)
@@ -148,6 +154,68 @@ eq(run("list", { limit = 1 }).remotes[1].totalCalls, 10)
 run("view-start", { view = "incoming", direction = "Incoming" }); a.OnClientEvent:Fire("new")
 eq(#run("view-fetch", { view = "incoming" }).logs, 1)
 run("view-stop", { view = "incoming" }); eq(run("status", {}).active, true)
+-- Configuration affects MCP history, not forwarding or installed controls.
+run("clear", {})
+local configured = run("configure", { max = 12, capture = { direction = "Incoming", classFilter = "RemoteFunction", method = "OnClientInvoke", nameFilter = "function" }, guiVisible = false, guiLogging = false })
+eq(configured.max, 12); eq(configured.capture.direction, "Incoming"); eq(configured.gui.visible, false); eq(configured.gui.logging, false)
+eq(#currentShared.TestSpyRules.queue, 0)
+before = sent; cursor = run("status", {}).latestId
+call(fire, a, "filtered outgoing"); eq(sent, before + 1); eq(run("status", {}).latestId, cursor)
+a.OnClientEvent:Fire("filtered incoming event"); eq(run("status", {}).latestId, cursor)
+returned = table.pack(call(b.OnClientInvoke, "keep callback", nil)); eq(returned.n, 3); eq(returned[2], false)
+eq(run("status", {}).latestId, cursor + 1); eq(#currentShared.TestSpyRules.queue, 0)
+eq(run("logs", { classFilter = "RemoteFunction", direction = "Incoming" }).returned, 1)
+eq(run("pause", {}).capturing, false)
+eq(run("control", { remoteId = id, direction = "Outgoing", control = "block", enabled = true }).blocked, true)
+before = sent; cursor = run("status", {}).latestId
+call(fire, a, "paused but blocked"); call(b.OnClientInvoke, "paused callback")
+eq(sent, before); eq(run("status", {}).latestId, cursor)
+eq(run("status", {}).active, true)
+eq(run("resume", {}).capture.direction, "Incoming")
+eq(run("configure", { resetFilters = true, capture = { blockedOnly = true } }).capture.blockedOnly, true)
+call(fire, c, "not blocked"); eq(run("status", {}).latestId, cursor)
+call(fire, a, "only blocked"); eq(run("status", {}).latestId, cursor + 1)
+eq(run("logs", { blockedOnly = true }).returned, 1)
+eq(run("logs", { blockedOnly = true }).logs[1].blocked, true)
+run("control", { remoteId = incomingId, direction = "Incoming", control = "ignore", enabled = true })
+local controls = run("controls", { limit = 1 })
+eq(controls.count, 2); eq(controls.returned, 1); eq(controls.nextOffset, 1)
+eq(run("controls", { offset = 1, limit = 1 }).returned, 1)
+eq(run("reset-controls", { direction = "Outgoing", resetControl = "block" }).changed, 1)
+eq(run("controls", { direction = "Incoming" }).count, 1)
+eq(run("controls", { direction = "Outgoing" }).count, 0)
+eq(run("reset-controls", { direction = "Both" }).changed, 1)
+eq(run("controls", {}).count, 0)
+eq(run("status", {}).capture.blockedOnly, true)
+eq(run("configure", { resetFilters = true, guiLogging = true, guiVisible = true }).gui.visible, true)
+eq(run("status", {}).gui.logging, true)
+run("clear", {})
+for i = 1, 14 do call(fire, a, i) end
+local lastId = run("status", {}).latestId
+eq(run("configure", { max = 10 }).count, 10)
+eq(run("logs", {}).logs[1].id, lastId); eq(run("logs", {}).logs[10].args[1], 5)
+eq(run("status", {}).max, 10)
+eq(run("controls", {}).count, 0)
+-- GUI rules use the same tables as the production hooks and remain inspectable.
+local rules = currentShared.TestSpyRules
+rules.block.Remote = true; rules.ignore.Function = true
+controls = run("controls", {})
+eq(controls.count, 2); eq(controls.controls[1].source, "gui"); eq(controls.controls[1].nameRule, "Function")
+eq(type(run("control", { remoteId = id, direction = "Outgoing", control = "block", enabled = false }).error), "string")
+before = sent; call(fire, duplicate, "name blocked"); eq(sent, before)
+eq(run("reset-controls", { direction = "Incoming", resetControl = "ignore" }).changed, 0)
+eq(rules.ignore.Function, true)
+eq(run("reset-controls", { direction = "Both", resetControl = "ignore" }).changed, 1)
+eq(run("reset-controls", { direction = "Outgoing", resetControl = "block" }).changed, 1)
+call(fire, a, "name rule reset"); eq(sent, before + 1)
+assert(#rules.queue > 0)
+run("clear", {}); eq(#rules.queue, 0)
+local legacyBackend = env.__polarisKetamineEngine.shared
+local getControls, resetControls = legacyBackend.GetControls, legacyBackend.ResetControls
+legacyBackend.GetControls, legacyBackend.ResetControls = nil, nil
+eq(run("status", {}).capabilities.controlInspection, false)
+eq(type(run("controls", {}).error), "string"); eq(type(run("reset-controls", {}).error), "string")
+legacyBackend.GetControls, legacyBackend.ResetControls = getControls, resetControls
 local replacementCallback = function() return "game replaced callback" end
 b2.OnClientInvoke = replacementCallback
 eq(run("stop", {}).stopped, true); eq(env.__KetamineShared, nil)
