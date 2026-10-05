@@ -1,0 +1,13 @@
+{
+  "project": "https://gitlab.com/upio/cobalt",
+  "version": "2.2.5.15",
+  "commit": "192588aa76f6c5cf8d3876d26b7b942101a10511",
+  "source": "https://gitlab.com/upio/cobalt/-/releases/2.2.5.15/downloads/Cobalt.luau",
+  "upstream_sha256": "b326567a5778231679c6d15c1f7f5bf268a39093b5aa8057a3a42f2e51275e71",
+  "patches": [
+    "Preserve callback when RakNet registration returns nil, for send and receive cleanup.",
+    "Use callback fallback in RakNet capability test.",
+    "Allow per-launch capture mode without changing saved Cobalt settings.",
+    "Expose CodeGen to the Polaris adapter and mark the bundled build."
+  ]
+}
