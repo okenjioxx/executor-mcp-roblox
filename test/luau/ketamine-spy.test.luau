@@ -119,10 +119,22 @@ call(fire, duplicate, "other"); local duplicateId = run("logs", {}).logs[1].remo
 eq(type(run("control", { remoteId = duplicateId, remotePath = "game.Remote", direction = "Outgoing", control = "block", enabled = true }).error), "string")
 local returned = table.pack(call(invoke, b, "function", nil)); eq(returned.n, 3); eq(returned[2], false); eq(forwarded.n, 2)
 call(fire, c, "unreliable", nil); eq(run("logs", {}).logs[1].argCount, 2); eq(run("logs", {}).logs[1].args[1], "unreliable")
-call(incoming, "callback", nil); local incomingId = run("logs", { direction = "Incoming" }).logs[1].remoteId
+returned = table.pack(call(b.OnClientInvoke, "callback", nil)); eq(returned.n, 3); eq(returned[2], false)
+local incomingId = run("logs", { direction = "Incoming" }).logs[1].remoteId
 eq(run("control", { remoteId = incomingId, direction = "Incoming", control = "block", enabled = true }).blocked, true)
-before = received; call(incoming, "blocked callback"); eq(received, before); eq(run("logs", { direction = "Incoming" }).logs[1].blocked, true)
-run("control", { remoteId = incomingId, direction = "Incoming", control = "block", enabled = false }); call(incoming, "resumed"); eq(received, before + 1)
+before = received; call(b.OnClientInvoke, "blocked callback"); eq(received, before); eq(run("logs", { direction = "Incoming" }).logs[1].blocked, true)
+run("control", { remoteId = incomingId, direction = "Incoming", control = "block", enabled = false }); call(b.OnClientInvoke, "resumed"); eq(received, before + 1)
+-- Shared callbacks must retain per-instance capture and blocking.
+local b2 = remote("OtherFunction", "RemoteFunction")
+game.DescendantAdded:Fire(b2)
+run("control", { remoteId = incomingId, direction = "Incoming", control = "block", enabled = true })
+before = received
+local callbackCursor = run("status", {}).latestId
+call(b2.OnClientInvoke, "other callback")
+eq(received, before + 1)
+eq(run("status", {}).latestId, callbackCursor + 1)
+eq(run("logs", { direction = "Incoming" }).logs[1].remote, "game.OtherFunction")
+run("control", { remoteId = incomingId, direction = "Incoming", control = "block", enabled = false })
 run("control", { remoteId = id, direction = "Outgoing", control = "ignore", enabled = true }); local cursor = run("status", {}).latestId
 call(fire, a, "ignored"); eq(run("status", {}).latestId, cursor)
 run("control", { remoteId = id, direction = "Outgoing", control = "ignore", enabled = false })
@@ -136,7 +148,10 @@ eq(run("list", { limit = 1 }).remotes[1].totalCalls, 10)
 run("view-start", { view = "incoming", direction = "Incoming" }); a.OnClientEvent:Fire("new")
 eq(#run("view-fetch", { view = "incoming" }).logs, 1)
 run("view-stop", { view = "incoming" }); eq(run("status", {}).active, true)
+local replacementCallback = function() return "game replaced callback" end
+b2.OnClientInvoke = replacementCallback
 eq(run("stop", {}).stopped, true); eq(env.__KetamineShared, nil)
+eq(b.OnClientInvoke, incoming); eq(b2.OnClientInvoke, replacementCallback)
 local oldCount = run("status", {}).latestId; a.OnClientEvent:Fire("after stop"); eq(run("status", {}).latestId, oldCount)
 before = sent; call(fire, a, "restored"); eq(sent, before + 1)
 -- Production preflight and switch preserve the previous engine on download/cleanup failure.
@@ -145,6 +160,10 @@ env.Cobalt = { shared = { Logs = {}, Unload = function() unloads += 1; env.Cobal
 local originalHash = crypt.hash; crypt.hash = function() return "bad hash" end
 eq(type(switchKetamine().error), "string"); eq(unloads, 0); assert(env.Cobalt)
 crypt.hash = originalHash
+local originalHttpGet = game.HttpGet
+game.HttpGet = function() env.__KetamineShared = {}; return upstreamSource end
+eq(type(switchKetamine().error), "string"); eq(unloads, 0); assert(env.Cobalt)
+env.__KetamineShared = nil; game.HttpGet = originalHttpGet
 env.Cobalt.shared.Unload = function() error("failed unload") end
 eq(type(switchKetamine().error), "string"); eq(env.__polarisKetamineEngine, nil); assert(env.Cobalt)
 env.Cobalt.shared.Unload = function() unloads += 1; env.Cobalt = nil end
@@ -155,6 +174,15 @@ eq(switchCobalt().engine, "Cobalt"); eq(env.__polarisKetamineEngine, nil)
 eq(switchKetamine().engine, "Ketamine"); eq(env.Cobalt, nil)
 eq(type(run("control", { remoteId = id, direction = "Outgoing", control = "block", enabled = true }).error), "string")
 env.__polarisRemoteSpySwitching = true; eq(type(switchKetamine().error), "string"); env.__polarisRemoteSpySwitching = nil
+local originalRestoreHooks = currentShared.PolarisRestoreHooks
+currentShared.PolarisRestoreHooks = function() error("hook restoration failed") end
+eq(type(run("stop", {}).error), "string")
+eq(type(switchKetamine().error), "string"); eq(run("status", {}).active, false)
+eq(run("status", {}).cleanupRequired, true)
+eq(type(switchCobalt().error), "string"); eq(env.Cobalt, nil)
+currentShared.PolarisRestoreHooks = originalRestoreHooks
+eq(run("stop", {}).stopped, true); eq(env.__polarisKetamineEngine, nil)
+eq(switchKetamine().active, true)
 currentShared.OnCloseEvent.Event:Fire(); eq(env.__polarisKetamineEngine, nil); eq(run("status", {}).loaded, false)
 env.__KetamineShared = {}; eq(type(switchKetamine().error), "string"); env.__KetamineShared = nil
 print("Ketamine upstream capture, controls, cleanup, and switching passed " .. count .. " assertions.")

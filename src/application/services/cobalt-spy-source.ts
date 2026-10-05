@@ -126,7 +126,7 @@ local function detach()
 end
 local function ready()
   local s = shared()
-  return s and not s.Unloaded and type(s.Logs) == "table"
+  return s and not s.Unloaded and not s.CleanupFailed and type(s.Logs) == "table"
 end
 local function status()
   local s = shared()
@@ -135,6 +135,7 @@ local function status()
     engine = engineName, bundledVersion = __bundleVersion,
     sessionId = state and state.sessionId or nil,
     loaded = ready() == true, active = ready() == true and state ~= nil and state.active == true and same(state.cobalt, cobalt),
+    cleanupRequired = s and s.CleanupFailed == true or false,
     mode = s and (s.IsUsingRakNetHooks and "raknet" or "luau") or nil,
     raknetSupported = support and support.IsWorking == true or false,
     raknetDetails = support and support.Details or nil,
@@ -318,11 +319,12 @@ end
 if operation == "status" then return status() end
 if operation == "restart" and options.mode == "raknet" and not validateRaknet() then return { error = "Enable RakNet in the executor UI before restarting" } end
 if operation == "stop" or operation == "restart" then
-  if ready() and type(shared().Unload) ~= "function" then return { error = "Cobalt cannot be unloaded by this build" } end
+  local needsUnload = shared() and not shared().Unloaded
+  if needsUnload and type(shared().Unload) ~= "function" then return { error = engineName .. " cannot be unloaded by this build" } end
   detach()
-  if ready() then
+  if needsUnload then
     local ok, err = pcall(shared().Unload)
-    if not ok then return { error = "Cobalt unload failed: " .. text(err) } end
+    if not ok then return { error = engineName .. " unload failed: " .. text(err) } end
     cobalt = env[objectKey]
     if ready() then return { error = "Cobalt is still running after unload" } end
   end
@@ -332,6 +334,7 @@ if operation == "stop" or operation == "restart" then
   end
 end
 if operation == "start" or operation == "restart" then
+  if shared() and shared().CleanupFailed then return { error = engineName .. " cleanup failed; retry operation=stop before starting again", cleanupRequired = true } end
   local mode = options.mode or "auto"
   if mode == "raknet" and not validateRaknet() then return { error = "Enable RakNet in the executor UI; send and receive hooks are required" } end
   local adopted = ready() == true

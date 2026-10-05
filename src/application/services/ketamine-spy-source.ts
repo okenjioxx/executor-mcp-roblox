@@ -15,6 +15,9 @@ end
 local hash = crypt and crypt.hash
 if type(hash) ~= "function" then error("Ketamine requires crypt.hash to verify the pinned upstream source") end
 local source = game:HttpGet("${KETAMINE_URL}")
+if env.__KetamineShared and not env.__polarisKetamineEngine then
+  error("An external Ketamine session started during preflight; close it before switching spies")
+end
 if type(source) ~= "string" or #source > 2097152 then error("Invalid Ketamine source download") end
 if string.lower(hash(source, "sha256")) ~= "${KETAMINE_SHA256}" then error("Ketamine source SHA-256 mismatch; refusing to load") end
 local function replaceOnce(text, before, after)
@@ -44,7 +47,7 @@ local callEnd = assert(string.find(remoteSource, "\n    task.spawn(function()", 
 remoteSource = string.sub(remoteSource, 1, callStart - 1) .. "local function callcheck() return true end\n" .. string.sub(remoteSource, callEnd)
 remoteSource = remoteSource:gsub("if settings.Log_executor_function_calls <= 2 then", "if true then")
 remoteSource = replaceOnce(remoteSource, "hooks.HookFunction(value, function(old, ...)",
-  "hooks.HookFunction(value, function(old, ...)\n                        if bridge.IncomingBlocked[instance] then\n                            bridge.Capture(instance, true, table.pack(...), nil, nil, true)\n                            return nil\n                        end")
+  "bridge.HookCallback(instance, value, function(old, ...)\n                        if bridge.IncomingBlocked[instance] then\n                            bridge.Capture(instance, true, table.pack(...), nil, nil, true)\n                            return nil\n                        end")
 remoteSource = remoteSource:gsub("while task.wait%(5%) do", "while not bridge.Stopped and task.wait(5) do")
 remoteSource = replaceOnce(remoteSource, "if not instance or setUp[instance] then return end", "if bridge.Stopped or not instance or setUp[instance] then return end")
 remoteSource = replaceOnce(remoteSource, "local fireServer = hooks.HookFunction", "if bridge.Stopped then return end\n            local fireServer = hooks.HookFunction")
@@ -75,13 +78,21 @@ export const KETAMINE_BOOTSTRAP = String.raw`
 local env = getgenv()
 local loader = env.__polarisKetaminePrepared
 if type(loader) ~= "function" then error("Ketamine preflight is required before loading") end
-local bridge = { IncomingBlocked = {}, Ignored = { Incoming = {}, Outgoing = {} }, Seen = { Incoming = {}, Outgoing = {} }, Stopped = false }
+if env.__KetamineShared and not env.__polarisKetamineEngine then
+  error("An external Ketamine session is running; close it before loading the MCP adapter")
+end
+local bridge = { IncomingBlocked = {}, IncomingCallbacks = {}, Ignored = { Incoming = {}, Outgoing = {} }, Seen = { Incoming = {}, Outgoing = {} }, Stopped = false }
 local backend = { Logs = {}, CaptureInterceptors = { All = {} }, IsUsingRakNetHooks = false,
   FunctionForClasses = { Outgoing = { RemoteEvent = "FireServer", UnreliableRemoteEvent = "FireServer", RemoteFunction = "InvokeServer" }, Incoming = { RemoteEvent = "OnClientEvent", UnreliableRemoteEvent = "OnClientEvent", RemoteFunction = "OnClientInvoke" } } }
 env.__polarisKetamineBridge = bridge
 local shared, outgoingBlocked, guiIgnore, guiLogs
 bridge.Bind = function(s, block, ignore, logs)
   shared, outgoingBlocked, guiIgnore, guiLogs = s, block, ignore, logs
+end
+bridge.HookCallback = function(instance, original, implementation)
+  local wrapper = function(...) return implementation(original, ...) end
+  instance.OnClientInvoke = wrapper
+  bridge.IncomingCallbacks[instance] = { original = original, wrapper = wrapper }
 end
 bridge.Capture = function(instance, incoming, args, caller, got, blocked)
   if bridge.Stopped then return end
@@ -133,8 +144,13 @@ backend.CodeGen = { BuildCallCode = function(_, info)
 end }
 backend.Unload = function(destroyRoot)
   if backend.Unloaded then return end
+  backend.CleanupFailed = true
   bridge.Stopped = true
   if shared then
+    for instance, entry in bridge.IncomingCallbacks do
+      if getcallbackvalue(instance, "OnClientInvoke") == entry.wrapper then instance.OnClientInvoke = entry.original end
+      bridge.IncomingCallbacks[instance] = nil
+    end
     shared.PolarisRestoreHooks()
     for _, connection in shared.Connections do if connection and connection.Connected then connection:Disconnect() end end
     shared.OnCloseEvent:Fire()
@@ -142,6 +158,7 @@ backend.Unload = function(destroyRoot)
     if env.__KetamineShared == shared then env.__KetamineShared = nil end
   end
   backend.Unloaded = true
+  backend.CleanupFailed = nil
   env.__polarisKetamineEngine, env.__polarisKetamineBridge, env.__polarisKetamineInitialized = nil, nil, nil
 end
 local ok, err = pcall(function()

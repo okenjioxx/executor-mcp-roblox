@@ -56,6 +56,9 @@ local ok, result = pcall(function()
     env.__polarisKetaminePrepared = prepare()
   end
   if ${starting} then
+    if env.__KetamineShared and not env.__polarisKetamineEngine then
+      return { error = "An external Ketamine session started during preflight; close it before switching spies" }
+    end
     local stopped = stopOther()
     if stopped.error or not stopped.stopped then return { error = "Cannot switch remote spies: " .. tostring(stopped.error or "previous engine did not stop") } end
   end

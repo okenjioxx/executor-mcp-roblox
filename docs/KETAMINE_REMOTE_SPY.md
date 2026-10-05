@@ -60,9 +60,11 @@ Ketamine is fetched from [commit 478b27d](https://github.com/InfernusScripts/Ket
 
 The executor needs internet access, `crypt.hash`, `hookfunction`, `hookmetamethod`, `getnamecallmethod`, `getcallbackvalue`, `setfenv`, and `loadstring`. Close external unadapted Ketamine sessions before using this integration.
 
-The source is adapted in memory to expose capture/control access, fix argument/caller ordering, preserve nil arity, and restore hooks synchronously in reverse order. Only the remote-spy, settings, and home pages start; HTTP/bindable spies and scanners do not. MCP history is independent of the GUI capture queue and its executor-call filter.
+The source is adapted in memory to expose capture/control access, fix argument/caller ordering, preserve nil arity, and restore hooks synchronously in reverse order. Incoming RemoteFunctions use per-instance callback wrappers, so sharing a callback does not share capture or blocking. Cleanup restores only callbacks still owned by the adapter. Only the remote-spy, settings, and home pages start; HTTP/bindable spies and scanners do not. MCP history is independent of the GUI capture queue and its executor-call filter.
 
 Preflight runs before stopping the current engine. Download/hash/capability/mode failures preserve it; failed unload prevents the replacement from starting. Failure during replacement initialization may leave both stopped; check status and retry. Overlapping lifecycle changes return a retry message.
+
+If status reports `cleanupRequired: true`, retry `operation: "stop"` for that engine before starting another spy. A backend with failed cleanup cannot be adopted as an active capture session. External Ketamine ownership is rechecked after downloading and before loading.
 
 Ketamine captures request arguments, without invocation results/errors or packet/actor metadata. Callbacks assigned/replaced after discovery may require restarting. MCP history is bounded by call count (10–5000); upstream GUI objects/connections and observed-remote control tables are separate, not a strict byte-bound cache.
 

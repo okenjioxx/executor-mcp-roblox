@@ -30,23 +30,23 @@
 
 Files: `src/application/services/remote-spy-source.ts`, `cobalt-spy-source.ts`, `test/unit/tools/remote-spy.test.ts`.
 
-- [ ] Add and run failing tests for explicit engine routing, default Cobalt behavior, independent namespaces, and read-only loads.
-- [ ] Generalize the existing recorder using backend configuration and add preflight/switch serialization.
-- [ ] Run the focused Vitest tests and the existing Cobalt Luau simulation.
+- [x] Add and run failing tests for explicit engine routing, default Cobalt behavior, independent namespaces, and read-only loads.
+- [x] Generalize the existing recorder using backend configuration and add preflight/switch serialization.
+- [x] Run the focused Vitest tests and the existing Cobalt Luau simulation.
 
 ### Task 2: Ketamine runtime bridge
 
 Files: `src/application/services/ketamine-spy-source.ts`, `test/luau/ketamine-spy.test.luau`, `scripts/check-ketamine-luau.mjs`.
 
-- [ ] Write a fixture that runs the production bridge and actual patched upstream remote-spy module.
-- [ ] Add pinned/hash-checked runtime loading, observer/control exports, packed arguments, and cleanup.
-- [ ] Verify incoming/outgoing capture, filters, overflow, block/unblock, unsupported event blocking, code generation, and unload in official Luau.
+- [x] Write a fixture that runs the production bridge and actual patched upstream remote-spy module.
+- [x] Add pinned/hash-checked runtime loading, observer/control exports, packed arguments, and cleanup.
+- [x] Verify incoming/outgoing capture, filters, overflow, block/unblock, unsupported event blocking, code generation, and unload in official Luau.
 
 ### Task 3: MCP and dashboard exposure
 
 Files: `src/tools/_shared/cobalt.ts`, capture/control tools under `src/tools/remote-spy/`, dashboard spy service/routes/page, README and Ketamine setup guide.
 
-- [ ] Add optional engine selectors to all capture/control tools and dashboard controls.
-- [ ] Test engine selection across MCP and dashboard; document limitations and runtime dependency.
-- [ ] Run typecheck, lint, tests, build, both Luau checks, and formatting of changed authored files.
-- [ ] Obtain an independent code review, address important findings, and deliver the verified branch.
+- [x] Add optional engine selectors to all capture/control tools and dashboard controls.
+- [x] Test engine selection across MCP and dashboard; document limitations and runtime dependency.
+- [x] Run typecheck, lint, tests, build, both Luau checks, and formatting of changed authored files.
+- [x] Obtain an independent code review, address important findings, and deliver the verified branch.

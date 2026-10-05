@@ -1,4 +1,20 @@
-# Validation for 2.0.0-cobalt.1
+# Validation
+
+## Selectable spies: 2.0.0-spies.1
+
+Checked on 2026-10-05 on Windows:
+
+- `pnpm verify`: typecheck, lint, and all 459 tests in 61 files passed.
+- `pnpm build`: passed.
+- `pnpm test:luau`: compiled the complete adapted Ketamine source, bundled Cobalt, and generated adapter operations. The production Ketamine bridge and actual upstream remote/hook modules passed 76 assertions; the existing Cobalt adapter passed 101 assertions and both RakNet registration/cleanup variants.
+- Regression checks cover shared incoming callbacks, per-instance blocking, preservation of game-replaced callbacks, external Ketamine starting during download, failed-unload rejection, and cleanup retry.
+- Compiled server smoke check: build identity, served dashboard JavaScript, engine selector, invalid-engine validation on start/logs/clear, and generated MCP type exposure passed.
+- Independent review findings were reproduced, fixed, and re-reviewed with no remaining actionable finding.
+- Changed authored files pass Prettier and `git diff --check`.
+
+These are host/compiler/simulation checks. Live Roblox executor compatibility, full upstream GUI scheduling, and capture coverage remain unverified. The earlier whole-repository formatting and coverage gate limitations below remain separate from this feature's checks.
+
+## Previous build: 2.0.0-cobalt.1
 
 ## GitHub source upload checks
 

@@ -26,6 +26,7 @@
     "README.md",
     "LICENSE",
     "docs/COBALT_REMOTE_SPY.md",
+    "docs/KETAMINE_REMOTE_SPY.md",
     "THIRD_PARTY_NOTICES.md",
     "vendor/cobalt/LICENSE.md",
     "vendor/cobalt/provenance.json"
