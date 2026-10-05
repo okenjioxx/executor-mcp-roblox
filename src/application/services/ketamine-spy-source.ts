@@ -25,6 +25,9 @@ local function replaceOnce(text, before, after)
   if not first or string.find(text, before, last + 1, true) then error("Unsupported Ketamine source layout") end
   return string.sub(text, 1, first - 1) .. after .. string.sub(text, last + 1)
 end
+-- EnumItem.EnumType is an Enum, which has no Name property.
+source = replaceOnce(source, 'return "Enum." .. arg.EnumType.Name .. "." .. arg.Name', 'return tostring(arg)')
+source = replaceOnce(source, 'return "Enum." .. arg.Name', 'return "Enum." .. tostring(arg)')
 local first = assert(string.find(source, 'modules[objects["Instance11"]] = function()', 1, true))
 local last = assert(string.find(source, 'modules[objects["Instance7"]] = function()', first, true))
 local remoteSource = string.sub(source, first, last - 1)

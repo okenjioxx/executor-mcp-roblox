@@ -1,5 +1,17 @@
 # Validation
 
+## Ketamine enum serializer: 2.0.0-spies.3
+
+Checked on 2026-10-05 on Windows:
+
+- Reproduced the existing serializer failure on a connected Roblox/Potassium client using `Enum.HumanoidStateType.Running`; no traffic or spy controls were changed.
+- Added a regression that executes Ketamine's actual adapted ToString module, rather than the capture fixture's serializer mock. It failed with the reported invalid `EnumType.Name` access before the patch.
+- Patched EnumItems to use `tostring(item)` and Enum types to use `"Enum." .. tostring(enumType)`. The upstream source remains pinned/hash-checked and is patched in memory.
+- `pnpm verify`: typecheck, lint, and all 461 tests in 61 files passed. `pnpm build` passed.
+- `pnpm test:luau`: 12 actual serializer assertions passed for enums, nested tables, enum keys, argument lists, and primitive values; the existing 131 Ketamine and 132 Cobalt assertions and compilation/cleanup checks also passed.
+- A read-only isolated copy of the patched upstream serializer passed on real Roblox enums, including nested round-trip and argument-list generation. The running spy itself was not replaced or restarted during this check.
+- Changed authored files pass Prettier and `git diff --check`.
+
 ## AI spy controls: 2.0.0-spies.2
 
 Checked on 2026-10-05 on Windows:

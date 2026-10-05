@@ -58,6 +58,16 @@ try {
     if (start < 0 || end < 0) throw new Error(`Module ${id} missing`);
     return patched.slice(body, end).replace(/end;\s*$/, "");
   }
+  const serializerFixture = readFileSync(
+    new URL("../test/luau/ketamine-serializer.test.luau", import.meta.url),
+    "utf8",
+  ).replace(
+    "-- SERIALIZER_INSERT",
+    `local function serializerModule()\n${moduleSource("Instance6")}\nend`,
+  );
+  const serializerFile = join(dir, "serializer.luau");
+  writeFileSync(serializerFile, serializerFixture);
+  process.stderr.write(run(process.env.LUAU_BIN || "luau", [serializerFile]));
   let fixture = readFileSync(
     new URL("../test/luau/ketamine-spy.test.luau", import.meta.url),
     "utf8",

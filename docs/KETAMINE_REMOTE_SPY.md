@@ -1,6 +1,6 @@
 # Selectable Cobalt and Ketamine spies
 
-Build `2.0.0-spies.2` adds persistent capture configuration, pause/resume, active-rule inspection/reset, and Ketamine GUI controls. Select `engine: "cobalt" | "ketamine"` on capture/control tools. Cobalt remains the default. One engine runs per Roblox client; different clients can choose different engines.
+Build `2.0.0-spies.3` fixes Ketamine EnumItem/Enum serialization, including nested remote arguments and call-code generation. It retains persistent capture configuration, pause/resume, active-rule inspection/reset, and Ketamine GUI controls. Select `engine: "cobalt" | "ketamine"` on capture/control tools. Cobalt remains the default. One engine runs per Roblox client; different clients can choose different engines.
 
 ## Setup and captures
 
@@ -10,7 +10,7 @@ Run `pnpm build`, stop your older server, restart the MCP client, and reconnect 
 { "operation": "start", "engine": "ketamine", "max": 500 }
 ```
 
-If Ketamine was already running from the older build, use `operation: "restart"` once to load its new GUI and rule-management controls. This expires its old IDs/views and resets configuration.
+If Ketamine was already running from an older build, use `operation: "restart"` once to load the updated serializer and controls. This expires its old IDs/views and resets configuration.
 
 Read captures using `get-remote-spy-logs`:
 

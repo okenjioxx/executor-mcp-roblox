@@ -1,6 +1,6 @@
 {
   "name": "executor-mcp-roblox",
-  "version": "2.0.0-spies.2",
+  "version": "2.0.0-spies.3",
   "description": "A clean-architecture MCP server that lets AI agents drive a running Roblox executor client.",
   "repository": {
     "type": "git",
